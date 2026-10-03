@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "outDir": "./node_modules/.tmp",
+    // 这部分是构建脚本（Node 侧），给足语言级别 —— 不给的话默认 ES5，
+    // 连 String.prototype.includes 都不认（vite.config.ts 里就会报 TS2550）
+    "target": "ES2022",
+    "lib": ["ES2022"]
+  },
+  "include": ["vite.config.ts"]
+}

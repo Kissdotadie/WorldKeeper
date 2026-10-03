@@ -1,0 +1,46 @@
+# 世界观查询器 — 全局配置（**程序目录这份是「种子」，你改它多半不生效**）
+#
+# 一共有两份，优先级从低到高：
+#   1. 代码里的默认值
+#   2. **本文件**（程序目录 seeds，装完之后只读）
+#   3. **数据目录里那份 `config.yaml`** ← 日常要改的是这一份
+#   4. 环境变量（`WKV_DATA_DIR` / `WKV_PORT` / `WKV_LAN`，测试与便携用）
+#
+# 所以：**改这里不生效，是因为数据目录那份把它盖掉了**（2026-10-03 实测踩过，
+# 查了半天）。数据目录在哪：界面「设置 → 后台 → 环境」里写着，或看启动日志
+# 「数据目录：…」那一行。数据目录那份也是安装版真正生效的那份。
+#
+# 为什么要有种子：安装向导装的时候才知道的项（主要是 storage.data_dir）得先写进来，
+# 否则第一次启动无从推导。**别往这里加端口之类的普通配置** —— 会被数据目录那份的
+# 默认值静默覆盖，造成「安装向导填了 9000、装完还是 8765」这种问题。
+
+server:
+  host: 127.0.0.1        # 仅本机访问
+  port: 8765
+  port_scan: 20          # 端口被占用时向后顺延
+  open_browser: true
+  lan_access: false      # 开启后手机可在同一 WiFi 下访问
+
+storage:
+  data_dir: null         # null = 自动推导；也可填绝对路径
+  snapshot_before_write: true
+
+snapshot:
+  auto_enabled: true     # 启动时与每 interval_hours 自动存一份
+  interval_hours: 24     # 距上次自动快照多久算「到点」
+  keep_count: 20         # 最多保留几份（保新删旧）
+  max_total_mb: 512      # 快照目录总量上限；0 = 只看份数
+
+ui:
+  theme: 默认
+  font_scale: 1.0
+
+log:
+  level: INFO
+  keep_days: 14
+
+ai:
+  enabled: false
+  base_url: ''
+  model: ''
+  monthly_limit: null

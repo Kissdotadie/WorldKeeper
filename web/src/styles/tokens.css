@@ -1,0 +1,261 @@
+/* ==========================================================================
+   设计令牌 · 三层结构
+   --------------------------------------------------------------------------
+   第 1 层 palette   原始色板：只描述「这是什么颜色」，不含任何用途语义
+   第 2 层 semantic  语义层：描述「用在哪里」。所有组件一律只引用这一层
+   第 3 层 component 组件层：具体控件尺寸 / 圆角 / 阴影等，由语义层拼出
+
+   规矩：
+   - 组件 CSS 里**不许出现十六进制色值**，只能引用 var(--...)。
+     这样 P5 做主题包（config/themes/*.json）时，换一层变量就能整体换肤。
+   - 新增颜色先加到 palette，再在 semantic 里给它一个用途名。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   第 1 层 · palette
+   -------------------------------------------------------------------------- */
+:root {
+  /* 中性色阶 */
+  --p-neutral-0:   #ffffff;
+  --p-neutral-25:  #fbfcfd;
+  --p-neutral-50:  #f5f7fa;
+  --p-neutral-100: #eceff4;
+  --p-neutral-150: #e2e6ee;
+  --p-neutral-200: #d3d9e3;
+  --p-neutral-300: #b6bfcd;
+  --p-neutral-400: #8d98a9;
+  --p-neutral-500: #6b7686;
+  --p-neutral-600: #4e5867;
+  --p-neutral-700: #3a4250;
+  --p-neutral-750: #2f3641;
+  --p-neutral-800: #262c36;
+  --p-neutral-850: #1e232b;
+  --p-neutral-900: #171b21;
+  --p-neutral-950: #101318;
+
+  /* 主色（用于选中、主按钮、链接） */
+  --p-accent-300: #8fb4ff;
+  --p-accent-400: #6a97f5;
+  --p-accent-500: #4a7de0;
+  --p-accent-600: #3a67c0;
+  --p-accent-700: #2c509b;
+
+  /* 状态色 */
+  --p-green-400: #4ec98a;
+  --p-green-600: #2e9b62;
+  --p-amber-400: #e0a33c;
+  --p-amber-600: #b57c1c;
+  --p-red-400:   #e2686b;
+  --p-red-600:   #b84246;
+  --p-violet-400: #a98cf0;
+
+  /* 实体类型识别色（形状与图表共用，见 P5 可视化样式包） */
+  --p-type-character:    #6a97f5;
+  --p-type-location:     #4ec98a;
+  --p-type-faction:      #e0a33c;
+  --p-type-organization: #a98cf0;
+  --p-type-item:         #57c4cf;
+  --p-type-concept:      #e2686b;
+  --p-type-realm:        #d98ec4;
+  /* 方法论：哲学观/意识形态/戒律。紫罗兰 —— 与「势力」的金、「组织」的紫、
+     「概念」的红都拉得开，且在明暗两套主题下都压得住。 */
+  --p-type-methodology:  #8e9bd8;
+
+  /* 字体族（可由 data/ 下的自定义字体覆盖）
+     拆成 base + 可覆盖层：用户在「外观」里选字体时只动 --font-ui / --font-mono，
+     选「默认」时把这两个删掉就退回 base —— 不需要记住原值。 */
+  --p-font-sans-base: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
+                      system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --p-font-mono-base: "Cascadia Code", "JetBrains Mono", Consolas, "Courier New", monospace;
+  --p-font-sans: var(--font-ui, var(--p-font-sans-base));
+  --p-font-mono: var(--font-mono, var(--p-font-mono-base));
+  --p-font-size-base: 15px;
+
+  /* 间距与圆角基数 */
+  --p-space-1: 4px;
+  --p-space-2: 8px;
+  --p-space-3: 12px;
+  --p-space-4: 16px;
+  --p-space-5: 24px;
+  --p-space-6: 32px;
+  --p-radius-sm: 4px;
+  --p-radius-md: 8px;
+  --p-radius-lg: 12px;
+  --p-radius-pill: 999px;
+
+  --p-dur-fast: 120ms;
+  --p-dur-base: 200ms;
+}
+
+/* --------------------------------------------------------------------------
+   第 2 层 · semantic —— 深色（默认）
+   -------------------------------------------------------------------------- */
+:root,
+:root[data-theme='dark'] {
+  --bg-app:           var(--p-neutral-950);
+  --bg-sunken:        var(--p-neutral-900);
+  --bg-surface:       var(--p-neutral-850);
+  --bg-raised:        var(--p-neutral-800);
+  --bg-hover:         var(--p-neutral-750);
+  --bg-active:        var(--p-neutral-700);
+  --bg-input:         var(--p-neutral-900);
+  --bg-overlay:       rgba(6, 8, 11, 0.66);
+
+  --text-primary:     #e8ecf3;
+  --text-secondary:   var(--p-neutral-300);
+  --text-muted:       var(--p-neutral-400);
+  --text-faint:       var(--p-neutral-500);
+  --text-inverse:     var(--p-neutral-950);
+  --text-on-accent:   #ffffff;
+
+  --border-subtle:    rgba(255, 255, 255, 0.06);
+  --border-default:   rgba(255, 255, 255, 0.11);
+  --border-strong:    rgba(255, 255, 255, 0.20);
+  --border-focus:     var(--p-accent-400);
+
+  --accent:           var(--p-accent-400);
+  --accent-hover:     var(--p-accent-300);
+  --accent-pressed:   var(--p-accent-500);
+  --accent-soft:      rgba(106, 151, 245, 0.15);
+  --accent-soft-strong: rgba(106, 151, 245, 0.26);
+
+  --ok:               var(--p-green-400);
+  --warn:             var(--p-amber-400);
+  --danger:           var(--p-red-400);
+  --ok-soft:          rgba(78, 201, 138, 0.14);
+  --warn-soft:        rgba(224, 163, 60, 0.14);
+  --danger-soft:      rgba(226, 104, 107, 0.14);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.5);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+
+  color-scheme: dark;
+}
+
+/* --------------------------------------------------------------------------
+   第 2 层 · semantic —— 浅色
+   -------------------------------------------------------------------------- */
+:root[data-theme='light'] {
+  --bg-app:           var(--p-neutral-100);
+  --bg-sunken:        var(--p-neutral-50);
+  --bg-surface:       var(--p-neutral-0);
+  --bg-raised:        var(--p-neutral-0);
+  --bg-hover:         var(--p-neutral-100);
+  --bg-active:        var(--p-neutral-150);
+  --bg-input:         var(--p-neutral-0);
+  --bg-overlay:       rgba(23, 27, 33, 0.4);
+
+  --text-primary:     var(--p-neutral-900);
+  --text-secondary:   var(--p-neutral-600);
+  --text-muted:       var(--p-neutral-500);
+  --text-faint:       var(--p-neutral-400);
+  --text-inverse:     var(--p-neutral-0);
+  --text-on-accent:   #ffffff;
+
+  --border-subtle:    rgba(23, 27, 33, 0.07);
+  --border-default:   rgba(23, 27, 33, 0.14);
+  --border-strong:    rgba(23, 27, 33, 0.26);
+  --border-focus:     var(--p-accent-500);
+
+  --accent:           var(--p-accent-500);
+  --accent-hover:     var(--p-accent-600);
+  --accent-pressed:   var(--p-accent-700);
+  --accent-soft:      rgba(74, 125, 224, 0.11);
+  --accent-soft-strong: rgba(74, 125, 224, 0.2);
+
+  --ok:               var(--p-green-600);
+  --warn:             var(--p-amber-600);
+  --danger:           var(--p-red-600);
+  --ok-soft:          rgba(46, 155, 98, 0.12);
+  --warn-soft:        rgba(181, 124, 28, 0.12);
+  --danger-soft:      rgba(184, 66, 70, 0.12);
+
+  --shadow-sm: 0 1px 2px rgba(23, 27, 33, 0.08);
+  --shadow-md: 0 4px 14px rgba(23, 27, 33, 0.1);
+  --shadow-lg: 0 14px 40px rgba(23, 27, 33, 0.16);
+  --scrollbar-thumb: rgba(23, 27, 33, 0.2);
+  --scrollbar-thumb-hover: rgba(23, 27, 33, 0.34);
+
+  color-scheme: light;
+}
+
+/* --------------------------------------------------------------------------
+   第 3 层 · component
+   -------------------------------------------------------------------------- */
+:root {
+  /* ---- 兼容别名 ----
+     P7 之后的一批样式（别名管理 / 工具箱 / 候选清单 / 书目信息 / 技能中心）
+     用了这组「短名」，但它们从未被定义过。CSS 自定义属性未定义又没写
+     fallback 时，**整条声明在计算期作废** —— 于是边框、圆角、字色直接消失
+     （工具箱卡片没边框，正是 P11-1️⃣② 反馈的根因）。
+     这里统一补上映射，一处修好、全站受益。新代码请直接用右边那列语义名。 */
+  --border: var(--border-default);
+  --text: var(--text-primary);
+  --text-tertiary: var(--text-muted);
+  --panel: var(--panel-bg);
+  --hover: var(--bg-hover);
+  --radius: var(--p-radius-md);
+  --accent-weak: var(--accent-soft);
+  --bg: var(--bg-app);
+
+  /* 面板与窗口 */
+  --panel-bg: var(--bg-surface);
+  --panel-header-bg: var(--bg-raised);
+  --panel-border: 1px solid var(--border-default);
+  --panel-radius: var(--p-radius-lg);
+  --panel-header-h: 38px;
+  --panel-body-pad: var(--p-space-4);
+
+  /* 控件 */
+  --control-h: 30px;
+  --control-h-sm: 24px;
+  --control-radius: var(--p-radius-sm);
+  --control-border: 1px solid var(--border-default);
+  --control-bg: var(--bg-input);
+  --control-hover-border: var(--border-strong);
+
+  /* 字号阶梯 —— 随容器宽度与全局 --font-scale 双向自适应 */
+  --font-scale: 1;
+  --fs-xs: calc(0.76rem * var(--font-scale));
+  --fs-sm: calc(0.85rem * var(--font-scale));
+  --fs-md: calc(1rem * var(--font-scale));
+  --fs-lg: calc(1.15rem * var(--font-scale));
+  --fs-xl: calc(1.45rem * var(--font-scale));
+
+  /* 类型识别色，供标签/圆点/图表取用 */
+  --type-character: var(--p-type-character);
+  --type-location: var(--p-type-location);
+  --type-faction: var(--p-type-faction);
+  --type-organization: var(--p-type-organization);
+  --type-item: var(--p-type-item);
+  --type-concept: var(--p-type-concept);
+  --type-realm: var(--p-type-realm);
+  /* 方法论 —— 哲学观、意识形态、戒律、主义。刻意与七个「实在类」拉开色相：
+     它不是具体的人地物，而是「一群人共同信奉的东西」。 */
+  --type-methodology: var(--p-type-methodology, #8e9bd8);
+
+  /* 派生视图里自造的骨架节点：思维导图的中心和分组，不是实体 */
+  --type-__root: var(--text-secondary);
+  --type-__tag: var(--p-type-faction);
+
+  /* 背景层与面板不透明度 —— 由「外观」界面写入，默认完全不影响观感 */
+  --app-bg-image: none;
+  --app-bg-blur: 0px;
+  --app-bg-dim: 0;
+  --panel-alpha: 1;
+}
+
+/* 各实体类型 → 识别色（新增类型时在这里加一行即可） */
+[data-entity-type='character']    { --type-color: var(--type-character); }
+[data-entity-type='location']     { --type-color: var(--type-location); }
+[data-entity-type='faction']      { --type-color: var(--type-faction); }
+[data-entity-type='organization'] { --type-color: var(--type-organization); }
+[data-entity-type='item']         { --type-color: var(--type-item); }
+[data-entity-type='concept']      { --type-color: var(--type-concept); }
+[data-entity-type='realm']        { --type-color: var(--type-realm); }
+[data-entity-type='methodology']  { --type-color: var(--type-methodology); }
+[data-entity-type='__tag']        { --type-color: var(--type-__tag); }
+[data-entity-type='__root']       { --type-color: var(--type-__root); }

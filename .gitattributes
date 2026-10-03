@@ -1,0 +1,33 @@
+# 归一化规则：文本文件在仓库里一律存 LF，检出时按平台转换。
+# 好处：不同机器、不同 autocrlf 设置下，diff 不会被换行符噪音淹没。
+
+* text=auto
+
+# 源码一律 LF，避免"改了一行、diff 却整文件变红"
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Windows 批处理**必须 CRLF**（cmd 对 LF 的解析有坑，这是本项目踩过的实锤）
+*.bat text eol=crlf
+
+# Inno Setup 脚本按 CRLF 存（记事本友好）
+*.iss text eol=crlf
+
+# 二进制，绝不动
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.zip binary
+*.pyd binary
+*.db binary
+*.woff binary
+*.woff2 binary

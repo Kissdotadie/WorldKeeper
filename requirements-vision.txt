@@ -1,0 +1,54 @@
+# 可选依赖：识别引擎（P4.5.3）
+#
+#     .venv/Scripts/python.exe -m pip install -r requirements-vision.txt
+#
+# 装了就能用「本地识别」；不装不影响任何其他功能，界面会提示怎么装。
+# 协议全部可商用（Apache-2.0 / MIT / BSD）。
+
+numpy>=1.26                    # BSD-3-Clause
+
+# OpenCV：抽区域轮廓。用 headless 版 —— 这个工具是本地服务，
+# 不需要 GUI 模块，headless 体积小、依赖少。
+#
+# 注意（踩过的坑）：rapidocr 依赖 **opencv-python**（非 headless），
+# 两个包提供同一个 cv2 模块，同时存在时会互相覆盖对方的文件。
+# 实测同版本共存不影响使用，但更稳的做法是**只装一个**：
+#   - 只要区域不要 OCR → 去掉 rapidocr，留 opencv-python-headless
+#   - 要 OCR → 把下面这行换成 opencv-python>=4.9（rapidocr 反正会拉它）
+opencv-python-headless>=4.9    # Apache-2.0
+
+# OCR：认出图上的字。PP-OCR 的 ONNX 版，中文好，不拖 torch / paddle。
+# 只做「读图上的字」，与「不接 AI 写正文」那条铁律无关。
+rapidocr>=2.0                  # Apache-2.0
+
+# rapidocr 3.x 把推理后端拆成了可选依赖，默认引擎是 onnxruntime ——
+# 不单独装它，`RapidOCR()` 会在初始化时抛 ImportError。
+onnxruntime>=1.17              # MIT
+
+# --- 备选 OCR（都不在包里，要用自己装；下载地址见界面「识别引擎下载与安装」）---
+#
+# 识别设置里的「OCR 后端」选 auto 时会按「轻 → 重」自动挑第一个能用的：
+#     rapidocr(约75MB) → paddleocr(约1GB) → easyocr(约2GB) → tesseract(需另装程序)
+#
+# tesseract：Apache-2.0，要另装系统程序 + 中文语言包 chi_sim，并让它进 PATH。
+#     pip install pytesseract
+#     https://github.com/UB-Mannheim/tesseract/wiki
+#
+# paddleocr：Apache-2.0，中文精度略好，但 paddlepaddle 本体 1GB 起步。
+#     **本项目的适配代码未在作者机器上实测过** —— 装完报错就先回 rapidocr。
+#     pip install paddleocr paddlepaddle
+#     https://github.com/PaddlePaddle/PaddleOCR
+#
+# easyocr：Apache-2.0，最省心，但会拖来一整套 PyTorch（2GB 起步）。
+#     **本项目的适配代码未在作者机器上实测过**。
+#     pip install easyocr
+#     https://github.com/JaidedAI/EasyOCR
+#
+# --- 关于许可（重要）------------------------------------------------------
+# 这些引擎**都不随程序分发**，所以本项目不对它们的许可负责。
+# 但有一条已知的坑记在这里：OpenCV 官方轮子里捆绑了
+#   cv2/opencv_videoio_ffmpeg*_64.dll —— FFmpeg 的 LGPL-2.1 二进制重分发
+#（cv2/LICENSE-3RD-PARTY.txt 第 243 行原文声明）。本工具只做静态图，
+# 完全不碰视频，实测把这个 DLL 删掉后 imdecode / cvtColor / findContours
+# 全部正常（探针：scripts/_probe_cv2_noffmpeg.py）。所以**若将来要把
+# OpenCV 打进包里，构建时必须剔除它**。当前策略是根本不打包，风险为零。
