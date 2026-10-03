@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>世界观查询器 WorldKeeper —— 给小说作者的本地世界观资料库</title>
+<style>
+:root{
+  --bg:#0b0f14; --surface:#121821; --surface2:#182130; --line:#243040;
+  --fg:#e6edf3; --fg2:#9fb0c3; --fg3:#6b7d92;
+  --accent:#4b9dff; --accent2:#7c5cff; --ok:#3fb950; --warn:#d29922;
+  --r:12px; --rmax:1400px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  line-height:1.7; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:var(--rmax);margin:0 auto;padding:0 28px}
+
+/* ── 顶栏 ── */
+header.top{
+  position:sticky;top:0;z-index:50;backdrop-filter:blur(10px);
+  background:rgba(11,15,20,.82);border-bottom:1px solid var(--line);
+}
+.top .wrap{display:flex;align-items:center;gap:18px;height:62px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:.2px}
+.brand .logo{
+  width:28px;height:28px;border-radius:8px;flex:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;
+}
+nav.links{display:flex;gap:20px;margin-left:auto;font-size:13.5px}
+nav.links a{color:var(--fg2)}
+nav.links a:hover{color:var(--fg);text-decoration:none}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 16px;border-radius:9px;font-size:13.5px;font-weight:500;
+  border:1px solid var(--line);background:var(--surface2);color:var(--fg);
+  transition:.15s;white-space:nowrap;cursor:pointer;
+}
+.btn:hover{border-color:#38506b;text-decoration:none;transform:translateY(-1px)}
+.btn.primary{
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  border-color:transparent;color:#fff;
+}
+
+/* ── 首屏 ── */
+.hero{padding:76px 0 54px;text-align:center;position:relative;overflow:hidden}
+.hero::before{
+  content:"";position:absolute;inset:-40% 0 auto;height:520px;
+  background:radial-gradient(560px 260px at 50% 0,rgba(75,157,255,.16),transparent 70%);
+  pointer-events:none;
+}
+.hero .tag{
+  display:inline-block;font-size:12.5px;color:var(--fg2);
+  border:1px solid var(--line);background:var(--surface);
+  border-radius:999px;padding:5px 14px;margin-bottom:22px;
+}
+.hero h1{font-size:44px;line-height:1.2;margin:0 0 16px;letter-spacing:-.5px}
+.hero h1 .en{font-size:26px;color:var(--fg3);display:block;margin-top:8px;font-weight:500;letter-spacing:1px}
+.hero p.lead{font-size:16.5px;color:var(--fg2);max-width:660px;margin:0 auto 30px}
+.hero .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.hero .meta{margin-top:18px;font-size:12.5px;color:var(--fg3)}
+
+/* ── 通用区块 ── */
+section{padding:58px 0;border-top:1px solid var(--line)}
+h2.sec{font-size:24px;margin:0 0 8px;letter-spacing:-.2px}
+p.sub{color:var(--fg2);font-size:14px;margin:0 0 30px;max-width:760px}
+
+/* ── 痛点卡片 ── */
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:20px 22px;
+}
+.card h3{margin:0 0 8px;font-size:15px;font-weight:600}
+.card p{margin:0;font-size:13.5px;color:var(--fg2)}
+.card .q{
+  font-size:14px;color:var(--fg);margin:0 0 10px;
+  border-left:3px solid var(--accent);padding-left:12px;
+}
+.card .ic{font-size:19px;margin-bottom:10px;display:block}
+
+/* ── 截图画廊 ── */
+.galgroup{margin-top:34px}
+.galgroup:first-of-type{margin-top:0}
+.galgroup > h3{
+  font-size:15px;font-weight:600;margin:0 0 4px;
+  display:flex;align-items:center;gap:9px;
+}
+.galgroup > h3 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.galgroup > p.gd{color:var(--fg3);font-size:12.5px;margin:0 0 16px;padding-left:16px}
+.gal{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px}
+figure.shot{
+  margin:0;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden;cursor:zoom-in;transition:.15s;
+}
+figure.shot:hover{border-color:#38506b;transform:translateY(-2px)}
+figure.shot img{display:block;width:100%;height:auto;background:#0b0f14}
+figure.shot figcaption{
+  padding:11px 14px;font-size:12.5px;color:var(--fg2);
+  border-top:1px solid var(--line);display:flex;gap:8px;align-items:baseline;
+}
+figure.shot figcaption b{color:var(--fg);font-weight:600;font-size:13px;flex:none}
+figure.shot.big{grid-column:1/-1}
+
+/* ── 原则 ── */
+.rules{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));counter-reset:r}
+.rule{
+  display:flex;gap:14px;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:16px 18px;
+}
+.rule .n{
+  counter-increment:r;flex:none;width:26px;height:26px;border-radius:8px;
+  background:var(--surface2);color:var(--accent);font-size:12.5px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+.rule .n::before{content:counter(r)}
+.rule h4{margin:0 0 3px;font-size:13.5px;font-weight:600}
+.rule p{margin:0;font-size:12.5px;color:var(--fg2)}
+
+/* ── 下载 ── */
+.dl{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:32px;text-align:center}
+.dl h2{margin:0 0 10px;font-size:22px}
+.dl p{color:var(--fg2);font-size:13.5px;margin:0 0 22px}
+.dl .note{font-size:12.5px;color:var(--fg3);margin-top:20px}
+.steps{text-align:left;max-width:640px;margin:24px auto 0;display:grid;gap:10px}
+.step{display:flex;gap:12px;font-size:13.5px;color:var(--fg2)}
+.step b{color:var(--fg);font-weight:600;flex:none;width:22px;height:22px;border-radius:50%;
+  background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:12px}
+
+footer{padding:34px 0 54px;border-top:1px solid var(--line);text-align:center;
+  font-size:12.5px;color:var(--fg3)}
+footer a{color:var(--fg2)}
+
+/* ── 灯箱 ── */
+#lb{
+  display:none;position:fixed;inset:0;z-index:200;background:rgba(4,7,11,.94);
+  align-items:center;justify-content:center;padding:28px;cursor:zoom-out;
+}
+#lb.on{display:flex}
+#lb img{max-width:100%;max-height:100%;border-radius:10px;border:1px solid var(--line)}
+#lb .cap{
+  position:absolute;bottom:18px;left:0;right:0;text-align:center;
+  font-size:13px;color:var(--fg2);
+}
+@media(max-width:760px){
+  .hero h1{font-size:31px} .hero h1 .en{font-size:19px}
+  nav.links{display:none} .gal{grid-template-columns:1fr}
+  .wrap{padding:0 18px} section{padding:42px 0}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="logo">世</span>世界观查询器 <span style="color:var(--fg3);font-weight:400">WorldKeeper</span></div>
+    <nav class="links">
+      <a href="#why">解决什么</a>
+      <a href="#features">功能</a>
+      <a href="#gallery">界面一览</a>
+      <a href="#rules">设计原则</a>
+      <a href="#download">下载</a>
+    </nav>
+    <a class="btn primary" href="https://github.com/Kissdotadie/WorldKeeper/releases/latest">下载 Windows 版</a>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <span class="tag">Windows 10 / 11 · 本地运行 · 无需安装 Python</span>
+    <h1>把散落的世界观，<br>收进一个能核对出处的资料库
+      <span class="en">WORLDKEEPER</span>
+    </h1>
+    <p class="lead">
+      写长篇写到几十万字，设定资料会散成一地：这个配角上次出场是第几章？这两个人什么关系？
+      第 3 章埋的伏笔收了吗？把这些变成一条条<b>带出处的实体卡片</b>——三个星期后回来看，依然对得上号。
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Kissdotadie/WorldKeeper/releases/latest">⬇ 下载安装版</a>
+      <a class="btn" href="https://github.com/Kissdotadie/WorldKeeper">看源码仓库</a>
+    </div>
+    <div class="meta">你的正文只属于你 —— 本程序<strong>只读正文、不代写</strong>，所有数据都存在你自己的硬盘上</div>
+  </div>
+</div>
+
+<section id="why">
+  <div class="wrap">
+    <h2 class="sec">它解决什么问题</h2>
+    <p class="sub">这四个问题，纸质笔记和 docx 都答不上来——因为它们记不住「这条信息来自哪里」。</p>
+    <div class="grid g2">
+      <div class="card"><p class="q">「这个配角上次出场是第几章？」</p><p>每个实体都有出场记录，按章排列，点一下就跳回原文。</p></div>
+      <div class="card"><p class="q">「A 和 B 到底是什么关系，我当时怎么定的？」</p><p><code>[[双链]]</code> 是关系的唯一真源，两边卡片永远同步，不会各说各话。</p></div>
+      <div class="card"><p class="q">「第 3 章埋的伏笔，第 27 章收掉了吗？」</p><p>伏笔单独建档，埋设章、预计回收、当前状态一目了然。</p></div>
+      <div class="card"><p class="q">「这个门派的名字，第三章和第七章写得一样吗？」</p><p>全文检索 + 出处指纹，改名、合并、冲突检查都有据可依。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2 class="sec">功能一览</h2>
+    <p class="sub">不是"能记笔记"，而是按长篇写作的真实流程设计的。</p>
+    <div class="grid g4">
+      <div class="card"><span class="ic">🗂</span><h3>实体卡片库</h3><p>人物 / 地点 / 势力 / 机构 / 物品 / 概念 / 境界 / 方法论 8 种内置类型，每本书还能加最多 16 种自定义类型。</p></div>
+      <div class="card"><span class="ic">🔗</span><h3>双链关系</h3><p>关系只在一处定义，改一处两边更新；关系网与三维力导向视图随时看全局。</p></div>
+      <div class="card"><span class="ic">🗺</span><h3>地理观地图</h3><p>一层一张图：目录树收纳 + 门户互连。凡界、神界、地狱是并列的三张图，不是硬套父子。</p></div>
+      <div class="card"><span class="ic">📍</span><h3>出处永不丢</h3><p>每条信息都带 章节 + 段落 + 录入方式 + 时间 + 置信度。</p></div>
+      <div class="card"><span class="ic">🪶</span><h3>伏笔看板</h3><p>埋设、预计回收、状态跨章追踪，不怕埋了忘收。</p></div>
+      <div class="card"><span class="ic">✨</span><h3>AI 抽取（可选）</h3><p>用你自己的 API key，只读正文、永不代写。抽出的结果先进「待确认清单」，人工点头才落盘。</p></div>
+      <div class="card"><span class="ic">🕘</span><h3>快照与回滚</h3><p>删除、合并前自动快照；定时快照；误删可整本回滚。</p></div>
+      <div class="card"><span class="ic">📚</span><h3>多书并行</h3><p>多本书互不干扰，每本独立的类型体系、外观与配置。</p></div>
+      <div class="card"><span class="ic">🔍</span><h3>全文检索</h3><p>SQLite FTS5 中文检索，上千实体也不卡。</p></div>
+      <div class="card"><span class="ic">🧩</span><h3>自由布局</h3><p>面板想怎么摆就怎么摆，并保存成自己的布局预设。</p></div>
+      <div class="card"><span class="ic">🎨</span><h3>外观与样式包</h3><p>界面主题 + 图上节点样式分开管；颜色、连线、布局都能调。</p></div>
+      <div class="card"><span class="ic">📱</span><h3>手机访问</h3><p>同一 WiFi 下用手机查设定，写稿时不用切窗口。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="gallery">
+  <div class="wrap">
+    <h2 class="sec">界面一览</h2>
+    <p class="sub">点任意一张图可放大。</p>
+    <div id="galroot"></div>
+  </div>
+</section>
+
+<section id="rules">
+  <div class="wrap">
+    <h2 class="sec">设计原则</h2>
+    <p class="sub">这个工具立在几条不太容易妥协的规矩上。它们决定了它能做什么，也决定了它<b>不做</b>什么。</p>
+    <div class="rules">
+      <div class="rule"><span class="n"></span><div><h4>正文只读</h4><p>工具绝不生成、续写、改写正文一个字。AI 只负责"读"。</p></div></div>
+      <div class="rule"><span class="n"></span><div><h4>索引零独占状态</h4><p>索引只是 markdown 的派生数据。删掉索引全量重建即可，书还在。</p></div></div>
+      <div class="rule"><span class="n"></span><div><h4>出处永不丢失</h4><p>没有出处的设定不可信，所以每条信息都必须能指回原文。</p></div></div>
+      <div class="rule"><span class="n"></span><div><h4>程序目录 ≠ 数据目录</h4><p>升级、重装、卸载都不碰你的书。卸载默认保留数据。</p></div></div>
+      <div class="rule"><span class="n"></span><div><h4>AI 永远只提议</h4><p>AI 抽出来的东西先进待确认清单，人工点头才写进档案。</p></div></div>
+      <div class="rule"><span class="n"></span><div><h4>你的数据是你的</h4><p>你录入的正文、实体、笔记，权利完全归你。</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="dl">
+      <h2>下载安装</h2>
+      <p>Windows 10 / 11（64 位）· 免费使用 · 无需安装 Python 或 Node</p>
+      <a class="btn primary" href="https://github.com/Kissdotadie/WorldKeeper/releases/latest" style="padding:12px 26px;font-size:14.5px">⬇ 下载 WorldKeeper-Setup（最新版）</a>
+      <div class="steps">
+        <div class="step"><b>1</b><span>双击安装包，按向导走。</span></div>
+        <div class="step"><b>2</b><span>许可协议页点「我接受」—— 这一步是必须的，协议里有限制再发行、要求自行备份数据等条款。</span></div>
+        <div class="step"><b>3</b><span>向导会问你把<b>数据目录</b>放在哪。那里存着你的书，建议放在你自己习惯的盘，<b>卸载程序默认保留它</b>。</span></div>
+        <div class="step"><b>4</b><span>装完双击桌面图标即可使用。空库会引导你新建第一本书或多书并行。</span></div>
+      </div>
+      <div class="note">想自己编译？源码在 <a href="https://github.com/Kissdotadie/WorldKeeper">GitHub 仓库</a>，README 里有从源码运行的步骤。</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0 0 6px"><strong>世界观查询器 WorldKeeper</strong> · 专有软件，保留所有权利</p>
+    <p style="margin:0">
+      <a href="https://github.com/Kissdotadie/WorldKeeper">源码仓库</a> ·
+      <a href="https://github.com/Kissdotadie/WorldKeeper/releases">下载</a> ·
+      <a href="https://github.com/Kissdotadie/WorldKeeper/blob/main/LICENSE">许可协议</a>
+    </p>
+  </div>
+</footer>
+
+<div id="lb"><img alt=""><div class="cap"></div></div>
+
+<script>
+const GROUPS = [
+  {
+    t: "实体卡片库",
+    d: "一切从「收进来」开始：卡片、表格、详情、角色录。",
+    items: [
+      ["screenshots/p0-实体列表.png", "实体列表", "按类型分栏，一眼看出谁是谁"],
+      ["screenshots/p1-实体-卡片.png", "卡片视图", "卡片上直接显示摘要与出处"],
+      ["screenshots/p1-实体-表格.png", "表格视图", "字段对齐，适合批量核对"],
+      ["screenshots/p0-实体详情.png", "实体详情", "属性表 + 出场记录 + 关联 + 待补充"],
+      ["screenshots/p1-角色录.png", "角色录", "人物单独成册，按阵营/势力分组"],
+      ["shots-p2/02-方法论.png", "方法论", "功法、体系一类的一等公民"],
+      ["shots-p2/03-章节原文.png", "章节原文", "只读对照，点出处直接跳回原文"],
+      ["shots-p2/05-待确认清单.png", "待确认清单", "AI 抽出的东西先进这里，人工点头才落盘"]
+    ]
+  },
+  {
+    t: "多种视图",
+    d: "同一批设定，换个角度看。关系网、导图、时间线、历史观、剧情线。",
+    items: [
+      ["shots-p3/13-词汇星球.png", "词汇星球", "整本书的高频词与枢纽实体，转成一颗自转的球"],
+      ["shots-p3/14-三维全景.png", "三维全景", "宽松排版的力导向图，远近层次一眼看出聚落"],
+      ["screenshots/p1-关系网-放射.png", "关系网 · 放射布局", "全类型关系一览，孤立实体自动剔除"],
+      ["shots-p2/04-关系网.png", "关系网 · 图上编辑", "不跳页面就能改关系"],
+      ["screenshots/p1-世界观-导图.png", "世界观 · 导图", "概念、境界、物品的层级脉络"],
+      ["screenshots/p1-地理观-导图.png", "地理观 · 导图", "一层一张图：目录树收纳 + 门户互连"],
+      ["shots-p2/06-方法论思维导图.png", "方法论 · 思维导图", "一门功法有哪些人信奉，一图看清"],
+      ["screenshots/p1-时间线.png", "时间线", "按首次出场排列"],
+      ["screenshots/p1-历史观.png", "历史观", "纪年表，时间正序"],
+      ["screenshots/p1-剧情线.png", "剧情线", "卷 / 章 / 事件 / 状态"],
+      ["screenshots/p1-汇总.png", "汇总面板", "一本书的整体体检"]
+    ]
+  },
+  {
+    t: "AI 能力（可选，用你自己的 key）",
+    d: "不进则退的活交给它，判断权始终在你手上。",
+    items: [
+      ["shots-p3/12-AI服务商配置.png", "服务商配置", "自带 key，支持多家服务商"],
+      ["shots-p3/08-AI抽取双引擎清单.png", "抽取双引擎清单", "规则引擎与 AI 引擎的产出分列"],
+      ["shots-p3/09-AI伏笔与逐章花费.png", "伏笔与逐章花费", "每章花了多少，心里有数"],
+      ["shots-p3/11-提示词管理.png", "提示词管理", "提示词自己攥着，随时改"],
+      ["shots-p3/10-后台AI配置与成本.png", "后台与预算", "月度上限、预警阈值"],
+      ["shots-p3/07-批量预检冲突标红.png", "批量预检 · 冲突标红", "同名跨章类型不一致，当场标出来"]
+    ]
+  },
+  {
+    t: "外观与布局",
+    d: "界面主题与图上样式分开管；面板想怎么摆就怎么摆。",
+    items: [
+      ["screenshots/p1-01-默认布局.png", "默认布局", "dockview 自由面板"],
+      ["screenshots/p1-09-布局菜单.png", "布局菜单", "保存 / 切换自己的布局预设"],
+      ["screenshots/p1-02-外观界面.png", "外观设置", "主题、字号、背景"],
+      ["screenshots/p1-03-主题-午夜蓝.png", "主题 · 午夜蓝", ""],
+      ["screenshots/p1-04-主题-暖纸.png", "主题 · 暖纸", ""],
+      ["screenshots/p1-05-暖纸浅色.png", "主题 · 暖纸浅色", ""],
+      ["screenshots/p1-06-大字号.png", "大字号", ""],
+      ["screenshots/p1-07-渐变背景.png", "渐变背景", ""],
+      ["screenshots/p1-08-图片背景.png", "图片背景", "用你自己的图当背景"],
+      ["screenshots/p1-dock-默认.png", "面板停靠", ""],
+      ["screenshots/p1-10-切回写作预设.png", "切回写作预设", ""]
+    ]
+  },
+  {
+    t: "导入与后台",
+    d: "已有资料不用一条条敲。",
+    items: [
+      ["screenshots/p0-批量导入.png", "批量导入", "docx / 文本 / 粘贴，一次进一批"],
+      ["screenshots/p1-导入.png", "导入向导", ""],
+      ["screenshots/p1-后台.png", "后台", "数据目录、端口、环境"]
+    ]
+  }
+];
+
+const root = document.getElementById('galroot');
+const lb = document.getElementById('lb');
+const lbImg = lb.querySelector('img');
+const lbCap = lb.querySelector('.cap');
+
+GROUPS.forEach(g => {
+  const sec = document.createElement('div');
+  sec.className = 'galgroup';
+  const h = document.createElement('h3');
+  h.innerHTML = '<span class="dot"></span>' + g.t;
+  sec.appendChild(h);
+  const d = document.createElement('p');
+  d.className = 'gd';
+  d.textContent = g.d;
+  sec.appendChild(d);
+  const grid = document.createElement('div');
+  grid.className = 'gal';
+  g.items.forEach(([src, title, desc]) => {
+    const fig = document.createElement('figure');
+    fig.className = 'shot';
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.src = src;
+    img.alt = title;
+    const cap = document.createElement('figcaption');
+    cap.innerHTML = '<b>' + title + '</b>' + (desc ? '<span>' + desc + '</span>' : '');
+    fig.appendChild(img);
+    fig.appendChild(cap);
+    fig.addEventListener('click', () => {
+      lbImg.src = src;
+      lbCap.textContent = title + (desc ? ' —— ' + desc : '');
+      lb.classList.add('on');
+    });
+    grid.appendChild(fig);
+  });
+  sec.appendChild(grid);
+  root.appendChild(sec);
+});
+
+lb.addEventListener('click', () => lb.classList.remove('on'));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') lb.classList.remove('on');
+});
+</script>
+</body>
+</html>

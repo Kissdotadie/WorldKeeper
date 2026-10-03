@@ -71,14 +71,11 @@ packaging/_*
 scripts/_*
 
 # ── 8. 界面实测的截图 ──
-# 历史上这些截图是对着作者的真实书截的；就算内容是示例书，
-# 也属于「实测过程的临时产物」，不该进版本库。
-# README 需要的截图单独放进 docs/shots-demo/（那是特意造的示例书）。
+# 工作截图（shots/、.shots/、docs/stages/）是实测过程的临时产物，不进版本库。
+# docs/screenshots|shots-p2|shots-p3 是落地页（docs/index.html）引用的样张，
+# 作者已确认书中内容均为已公开发表、可以展示（2026-10-03 拍板），故纳入版本库。
 shots/
 .shots/
-docs/screenshots/
-docs/shots-p2/
-docs/shots-p3/
 docs/stages/
 
 # ── 9. 打包与构建产物 ──
