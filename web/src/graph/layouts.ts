@@ -259,6 +259,42 @@ export function layoutFishbone(nodes: GNode[], gapX = 170, ribLen = 130): Map<st
 }
 
 /**
+ * 「自由结构」给的层级覆盖：结构模式下树的形状由用户亲手搭（outline），
+ * 不许 buildTree 再按 BFS 最短路自作主张 —— 否则用户刚挂好的上下级一刷新就散架。
+ */
+export interface HierarchyOverride {
+  root: string
+  children: Map<string, string[]>
+}
+
+/** 从层级覆盖直接造 Tree。覆盖里没提到（或 id 已不存在）的节点归入 orphans */
+function treeFromHierarchy(nodes: GNode[], h: HierarchyOverride): Tree | null {
+  const ids = new Set(nodes.map((n) => n.id))
+  if (!ids.has(h.root)) return null
+  const children = new Map<string, string[]>()
+  const parent = new Map<string, string>()
+  const depth = new Map<string, number>()
+  const order: string[] = []
+  const seen = new Set<string>([h.root])
+  const queue: string[] = [h.root]
+  depth.set(h.root, 0)
+  while (queue.length) {
+    const cur = queue.shift()!
+    order.push(cur)
+    const kids = (h.children.get(cur) ?? []).filter((k) => ids.has(k) && !seen.has(k))
+    for (const k of kids) {
+      seen.add(k)
+      parent.set(k, cur)
+      depth.set(k, (depth.get(cur) ?? 0) + 1)
+    }
+    children.set(cur, kids)
+    queue.push(...kids)
+  }
+  const orphans = nodes.filter((n) => !seen.has(n.id)).map((n) => n.id)
+  return { root: h.root, children, parent, depth, order, orphans }
+}
+
+/**
  * 五种「纯计算、结果确定」布局的统一入口 —— 一次调用拿到整张图的位置表。
  *
  * 为什么要有这个函数（P11-1️⃣⑤）：样式包的**缩略预览**也得画出一张图，
@@ -273,8 +309,9 @@ export function layoutStatic(
   nodes: GNode[],
   edges: GEdge[],
   rootId?: string | null,
+  hierarchy?: HierarchyOverride | null,
 ): Map<string, Pt> {
-  const tree = buildTree(nodes, edges, rootId)
+  const tree = (hierarchy && treeFromHierarchy(nodes, hierarchy)) || buildTree(nodes, edges, rootId)
   switch (kind) {
     case 'radial':
       return layoutRadial(nodes, tree)

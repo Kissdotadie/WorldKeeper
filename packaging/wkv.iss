@@ -15,7 +15,7 @@
 
 #define MyAppName "世界观查询器"
 #define MyAppNameEn "WorldKeeper"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "世界观查询器"
 #define MyAppExeName "WorldKeeper.exe"
 

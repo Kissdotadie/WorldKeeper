@@ -1823,6 +1823,57 @@
 }
 .graph__hint { opacity: 0.8; }
 
+/* ---- 自由结构（WPS 式思维导图编辑）---- */
+
+/* 选中节点头顶的迷你工具条：＋子级 / ＋同级 / 改名 / 摘下。
+   悬在节点上方一点，坐标由组件按世界坐标换算，这里只管长相。 */
+.graph__outline-bar {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 16px));
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--p-radius-md);
+  background: var(--bg-surface);
+  border: var(--panel-border);
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+}
+.graph__outline-bar button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  padding: 3px 8px;
+  border-radius: var(--p-radius-sm);
+  cursor: pointer;
+}
+.graph__outline-bar button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.graph__outline-bar button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* 自由节点的就地改名框：贴在节点正中，Enter 认账 Esc 反悔 */
+.graph__outline-rename {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  width: 150px;
+  padding: 4px 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--p-radius-sm);
+  outline: none;
+  box-shadow: var(--shadow-lg);
+}
+
 /* 工具条上的「浏览 / 编辑」两态开关（P11-2️⃣①）。
    为什么不用普通按钮：编辑是**模式**，不是动作 —— 两个状态都该看得见，
    当前在哪个状态也得一眼认出来（实心 = 当前）。 */

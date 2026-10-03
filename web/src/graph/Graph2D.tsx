@@ -52,6 +52,26 @@ import { hasSeenGraphGuide } from '../lib/graphGuide'
 interface SimNode extends GNode, SimulationNodeDatum {}
 type SimLink = SimulationLinkDatum<SimNode> & { kind?: string | null }
 
+/** 结构模式（自由结构）的编辑接口 —— 真源在外层，见 Props.outline 的注释 */
+export interface OutlineEditApi {
+  active: boolean
+  /** 该节点的父级 id；根为 null */
+  parentIdOf: (id: string) => string | null
+  /** 是不是界面自造的自由节点（实体节点走 onNodeEdit 开档案） */
+  isVirtual: (id: string) => boolean
+  addChild: (id: string) => void
+  addSibling: (id: string) => void
+  /** 摘下（实体）/删除（自由节点） */
+  remove: (id: string) => void
+  /** 只对自由节点生效；实体改名走档案浮层 */
+  rename: (id: string, name: string) => void
+  /** 拖 B 落到 A 上 = B 挂到 A 下。防环由外层把关 */
+  reparent: (childId: string, parentId: string | null) => void
+  /** 外层刚建好一个自由节点，让图自动进入改名（WPS 的新节点手感） */
+  pendingRenameId?: string | null
+  onRenameHandled?: () => void
+}
+
 interface Props {
   nodes: GNode[]
   edges: GEdge[]
@@ -94,6 +114,21 @@ interface Props {
   ) => void
   /** 工具栏上的「连线模式」开关（状态由外层持有，连完自动复位） */
   onToggleLinkMode?: () => void
+
+  // ---- 自由结构（WPS 式思维导图编辑）----
+  /**
+   * 结构编辑接口。传了且 `active` 为真，图就进入「结构模式」：
+   * 选中节点浮出迷你工具条（＋子级 / ＋同级 / 改名 / 摘下），
+   * Tab=加子级、Enter=加同级、Delete=摘下、F2=改名，
+   * 拖一个节点落到另一个节点上 = 改挂到它下面。结构数据的真源在外层
+   * （CatalogView 存 `view/scene.json`），这里只管把事件抛回去。
+   */
+  outline?: OutlineEditApi
+  /**
+   * 层级覆盖（结构模式下树的形状由这里决定，不再按连线 BFS 自行推理）。
+   * 与 `outline` 分开传：布局要的是纯数据，编辑要的是回调。
+   */
+  hierarchy?: { root: string; children: Map<string, string[]> } | null
 
   // ---- 样式系统（P5）----
   /** 节点该长什么样。不传 = 老行为：圆节点 + 按类型上色 */
@@ -212,6 +247,8 @@ export function Graph2D({
   background = 'none',
   labelScale = 1,
   children,
+  outline,
+  hierarchy,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const sizeRef = useRef({ w: 900, h: 600 })
@@ -348,11 +385,11 @@ export function Graph2D({
 
     simRef.current = null
     simNodesRef.current = []
-    const p = layoutStatic(layout, nodes, edges, rootId)
+    const p = layoutStatic(layout, nodes, edges, rootId, hierarchy ?? null)
     setPos(p)
     fitTo(p)
     fittedForRef.current = `${layout}:${nodes.length}`
-  }, [nodes, edges, layout, rootId, fitTo, radiusOf])
+  }, [nodes, edges, layout, rootId, fitTo, radiusOf, hierarchy])
 
   // 尺寸变化：用户没手动拖过视野就重新适配
   useEffect(() => {
@@ -400,6 +437,75 @@ export function Graph2D({
     [onSelect],
   )
 
+  // ---- 自由结构（WPS 式编辑）----
+  const oEdit = outline?.active ? outline : null
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
+  /** 拖动悬停的潜在新父级 —— 给它亮个环，人才敢松手 */
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+
+  const startRename = useCallback(
+    (id: string) => {
+      const def = byId.get(id)
+      if (!def) return
+      setRenaming({ id, value: def.name })
+    },
+    [byId],
+  )
+
+  // 外层刚建好一个自由节点 → 自动进入改名（WPS 的新节点手感：建完就打字）
+  useEffect(() => {
+    if (!oEdit?.pendingRenameId) return
+    startRename(oEdit.pendingRenameId)
+    oEdit.onRenameHandled?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oEdit?.pendingRenameId])
+
+  // 结构模式快捷键。改名输入框是 INPUT，这里的裸键默认不会在打字时触发
+  useShortcuts(
+    oEdit && selectedId && !renaming
+      ? [
+          {
+            id: 'graph.outline.child',
+            keys: 'Tab',
+            scope: 'graph',
+            desc: '结构模式：给选中节点加子级',
+            run: (e) => {
+              e.preventDefault()
+              oEdit.addChild(selectedId)
+            },
+          },
+          {
+            id: 'graph.outline.sibling',
+            keys: 'Enter',
+            scope: 'graph',
+            desc: '结构模式：给选中节点加同级',
+            run: (e) => {
+              e.preventDefault()
+              oEdit.addSibling(selectedId)
+            },
+          },
+          {
+            id: 'graph.outline.detach',
+            keys: 'Delete',
+            scope: 'graph',
+            desc: '结构模式：把选中节点摘下（实体本身不动）',
+            run: () => oEdit.remove(selectedId),
+          },
+          {
+            id: 'graph.outline.rename',
+            keys: 'F2',
+            scope: 'graph',
+            desc: '结构模式：就地改名（自由节点）',
+            run: () => {
+              if (oEdit.isVirtual(selectedId)) startRename(selectedId)
+            },
+          },
+        ]
+      : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [oEdit, selectedId, renaming],
+  )
+
 
   const onBgPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
@@ -428,6 +534,11 @@ export function Graph2D({
     if (id) {
       const g = toGraph(e.clientX, e.clientY)
       setPos((prev) => new Map(prev).set(id, g))
+      // 结构模式：拖到哪个节点上，哪个就是候选新父级 —— 亮环提示，松手即换挂
+      if (oEdit) {
+        const over = nodeIdUnder(e.clientX, e.clientY, id)
+        setDropTarget(over)
+      }
       const sn = simNodesRef.current.find((n) => n.id === id)
       if (sn && simRef.current) {
         sn.fx = g.x
@@ -443,6 +554,17 @@ export function Graph2D({
     const el = document.elementFromPoint(clientX, clientY)
     const g = el?.closest?.('[data-nid]')
     return g?.getAttribute('data-nid') ?? null
+  }
+
+  /** 同上，但**穿透排除某个节点** —— 结构模式拖拽换父时，被拖的节点自己
+   *  就悬在指针底下（松手点=目标中心），elementFromPoint 只会查到它自己。
+   *  elementsFromPoint 从顶到底逐层找，跳过被拖节点才能拿到真正压在下面的目标。 */
+  const nodeIdUnder = (clientX: number, clientY: number, exclude: string): string | null => {
+    for (const el of document.elementsFromPoint(clientX, clientY)) {
+      const nid = el.closest?.('[data-nid]')?.getAttribute('data-nid') ?? null
+      if (nid && nid !== exclude) return nid
+    }
+    return null
   }
 
   const endPointer = (e?: React.PointerEvent) => {
@@ -461,6 +583,13 @@ export function Graph2D({
     panRef.current = null
     const id = dragRef.current
     if (id) {
+      // 结构模式：松手时落在哪个节点上 = 挂到它下面（WPS 的拖拽换父）。
+      // 被拖节点自己就悬在指针底下，必须穿透排除（nodeIdUnder），否则永远查到自己。
+      // 防环（挂到自己后代下面）由外层的 reparent 把关，这里只管抛事件。
+      if (oEdit && e) {
+        const to = nodeIdUnder(e.clientX, e.clientY, id)
+        if (to) oEdit.reparent(id, to)
+      }
       const sn = simNodesRef.current.find((n) => n.id === id)
       if (sn) {
         sn.fx = null
@@ -469,6 +598,7 @@ export function Graph2D({
       simRef.current?.alphaTarget(0)
     }
     dragRef.current = null
+    setDropTarget(null)
     // 空白单击 → 取消选中（P11-2️⃣②）。
     // 按位移判：平移画布松手不算「点」，免得拖一下图就把选中丢了。
     const down = bgDownRef.current
@@ -621,6 +751,10 @@ export function Graph2D({
               const hot = focusSet != null && focusSet.has(e.source) && focusSet.has(e.target)
               const dim = focusSet != null && !hot
               const curve = edgeStyle?.curve ?? 'straight'
+              // 层级边（结构模式的「包含」、分组骨架的「分组」）必须带箭头 ——
+              // 上下级方向是它的语义，样式包再怎么配也不许把方向藏掉
+              const hierarchyEdge = e.kind === '包含' || e.kind === '分组'
+              const withArrow = hierarchyEdge || edgeStyle?.arrow !== false
               return (
                 <path
                   key={i}
@@ -631,7 +765,7 @@ export function Graph2D({
                     strokeWidth: (edgeStyle?.width ?? 1) * 1.2,
                     strokeDasharray: hot ? undefined : dashOf(edgeStyle),
                   }}
-                  markerEnd={edgeStyle?.arrow === false ? undefined : hot ? 'url(#g2d-arrow-hot)' : 'url(#g2d-arrow)'}
+                  markerEnd={withArrow ? (hot ? 'url(#g2d-arrow-hot)' : 'url(#g2d-arrow)') : undefined}
                 />
               )
             })}
@@ -706,6 +840,8 @@ export function Graph2D({
                     // 双击 = 就地编辑；Alt+双击 = 设为布局的根（老习惯留在 Alt 上）。
                     // Alt+双击是**视图操作**，浏览态也留着 —— 只想看图的人也常要换根。
                     if (e.altKey) onPickRoot?.(n.id)
+                    // 结构模式：自由节点双击进就地改名；实体节点照旧开档案浮层
+                    else if (oEdit && oEdit.isVirtual(n.id)) startRename(n.id)
                     else if (editable) onNodeEdit?.(n.id, n.name, { x: e.clientX, y: e.clientY }, n.type)
                   }}
                 >
@@ -718,11 +854,14 @@ export function Graph2D({
                       style={{ stroke: fill, opacity: 0.55 }}
                     />
                   )}
-                  {(isSel || hit) && (
+                  {(isSel || hit || dropTarget === n.id) && (
                     <ShapeEl
                       geom={shapeGeom(shape, r + 6)}
                       className="graph__halo"
-                      style={{ stroke: hit ? 'var(--warn)' : 'var(--accent)' }}
+                      style={{
+                        stroke: dropTarget === n.id ? 'var(--accent)' : hit ? 'var(--warn)' : 'var(--accent)',
+                        opacity: dropTarget === n.id ? 0.9 : undefined,
+                      }}
                     />
                   )}
                   {/* 悬停反馈（P11-2️⃣①）：一圈更细的灰环。
@@ -773,6 +912,77 @@ export function Graph2D({
       </svg>
 
       {children}
+
+      {/* 结构模式：选中节点的迷你工具条。屏幕坐标 = 世界坐标 × k + 平移，
+          与贴纸层同一个换算原点（.graph 左上角），缩放窗口也不漂。 */}
+      {oEdit && selectedId && !renaming && pos.has(selectedId) && (() => {
+        const p = pos.get(selectedId)!
+        const isRoot = !oEdit.parentIdOf(selectedId)
+        const isVirt = oEdit.isVirtual(selectedId)
+        return (
+          <div
+            className="graph__outline-bar"
+            style={{ left: p.x * t.k + t.x, top: p.y * t.k + t.y }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button title="加一个子级节点（Tab）" onClick={() => oEdit.addChild(selectedId)}>
+              ＋子级
+            </button>
+            <button
+              title="在它旁边加一个同级节点（Enter）"
+              disabled={isRoot}
+              onClick={() => oEdit.addSibling(selectedId)}
+            >
+              ＋同级
+            </button>
+            {isVirt && (
+              <button title="就地改名（F2 / 双击节点）" onClick={() => startRename(selectedId)}>
+                改名
+              </button>
+            )}
+            {!isRoot && (
+              <button
+                title={isVirt ? '删除这个自由节点（不影响实体）' : '从结构摘下，实体档案一个字不动'}
+                onClick={() => oEdit.remove(selectedId)}
+              >
+                {isVirt ? '删除' : '摘下'}
+              </button>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* 结构模式：就地改名。Enter 认账，Esc 反悔，点别处当没改过 */}
+      {renaming &&
+        (() => {
+          const p = pos.get(renaming.id)
+          if (!p) return null
+          return (
+            <input
+              className="graph__outline-rename"
+              style={{ left: p.x * t.k + t.x, top: p.y * t.k + t.y }}
+              value={renaming.value}
+              autoFocus
+              placeholder="节点名字，回车确认"
+              onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Enter') {
+                  oEdit?.rename(renaming.id, renaming.value.trim() || '新节点')
+                  setRenaming(null)
+                } else if (e.key === 'Escape') {
+                  setRenaming(null)
+                }
+              }}
+              onBlur={() => {
+                // 点别处 = 认账（WPS 的手感）。Esc 才是反悔 —— 不然手一抖点空处，
+                // 刚打的字就全没了，比「不想改却提交了」恼火得多。
+                oEdit?.rename(renaming.id, renaming.value.trim() || '新节点')
+                setRenaming(null)
+              }}
+            />
+          )
+        })()}
 
       <div className="graph__toolbar">
         {/* 编辑开关（P11-2️⃣①）：以前编辑是**隐形常开**的，用户压根不知道能改。
@@ -829,7 +1039,9 @@ export function Graph2D({
         )}
         <span className="graph__hint faint fs-xs">
           {editable
-            ? '双击节点改它 · 双击空白新建 · 拖到另一个节点连线 · Alt+双击设为根'
+            ? oEdit
+              ? 'Tab=子级 · Enter=同级 · 拖到节点上=挂它下面 · 双击自由节点改名 · Delete=摘下'
+              : '双击节点改它 · 双击空白新建 · 拖到另一个节点连线 · Alt+双击设为根'
             : '浏览态：滚轮缩放 · 空白拖动平移 · 单击选中（想改就切到「编辑」）'}
         </span>
       </div>

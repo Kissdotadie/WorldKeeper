@@ -885,6 +885,12 @@ export interface SceneState {
   schema?: number
   graphs?: Record<string, SceneGraphState>
   styles?: SceneStyles
+  /**
+   * 思维导图的「自由结构」—— 每张目录图（世界观/地理观…）一份，
+   * 键是 CatalogView 的 sceneKey。装饰层：结构只记「谁挂在谁下面」，
+   * 实体档案一字不动；丢了重建骨架也不会丢内容。
+   */
+  outlines?: Record<string, import('../graph/outline').OutlineState>
 }
 
 export const getScene = (bookId: string) =>

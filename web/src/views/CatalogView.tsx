@@ -9,7 +9,7 @@
  * 所以删掉索引重建之后，这张图必须长得一模一样（「索引零独占状态」）。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as api from '../api/client'
 import type { EntityMeta, GraphData, TypeOption } from '../api/types'
 import { useApp } from '../state/store'
@@ -27,6 +27,18 @@ import { useSceneStyles } from '../graph/useSceneStyles'
 import { useStyleResolver } from '../graph/useStyleResolver'
 import { LAYOUT_LABELS } from '../graph/types'
 import type { GEdge, GNode, LayoutKind } from '../graph/types'
+import {
+  newOutline,
+  newVirtualId,
+  outlineAttach,
+  outlineDetach,
+  outlineInsertSibling,
+  outlineParentOf,
+  outlineRename,
+  outlineReparent,
+  isVirtualOutlineId,
+  type OutlineState,
+} from '../graph/outline'
 
 const ROOT = '__root__'
 const tagNodeId = (t: string) => `__tag__:${t}`
@@ -117,6 +129,103 @@ export function CatalogView({
   )
   const sceneKey = `catalog-${types.join('-')}`
 
+  // ---- 自由结构（WPS 式思维导图编辑）----
+  // 结构存在 view/scene.json 的 outlines[sceneKey]（装饰层，后端整份存 JSON 零解析）。
+  // 铁律 2 的延伸：结构丢了随时可以重搭，实体档案一个字不动。
+  const [outlineOn, setOutlineOn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`wkv.outline.${title}`) === '1'
+    } catch {
+      return false
+    }
+  })
+  const [outline, setOutline] = useState<OutlineState | null>(null)
+  const [pendingRenameId, setPendingRenameId] = useState<string | null>(null)
+  const sceneRef = useRef<api.SceneState | null>(null)
+  const saveTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!bookId) return
+    let alive = true
+    api
+      .getScene(bookId)
+      .then((r) => {
+        if (!alive) return
+        sceneRef.current = r.scene
+        const o = r.scene.outlines?.[sceneKey]
+        if (o && o.schema === 1 && typeof o.root === 'string') setOutline(o)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [bookId, sceneKey])
+
+  /** 改结构 = 立刻上屏 + 400ms 防抖落盘（与外观落盘同节奏） */
+  const persistOutline = useCallback(
+    (next: OutlineState) => {
+      setOutline(next)
+      if (!bookId) return
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = window.setTimeout(() => {
+        const scene: api.SceneState = { ...(sceneRef.current ?? {}) }
+        scene.outlines = { ...(scene.outlines ?? {}), [sceneKey]: next }
+        sceneRef.current = scene
+        void api.saveScene(bookId, scene).catch(() => undefined)
+      }, 400)
+    },
+    [bookId, sceneKey],
+  )
+
+  const toggleOutline = () => {
+    const next = !outlineOn
+    setOutlineOn(next)
+    try {
+      localStorage.setItem(`wkv.outline.${title}`, next ? '1' : '0')
+    } catch {
+      /* 忽略 */
+    }
+    if (next && !outline) {
+      // 第一次开：根节点就是界面名 —— 想改名随时双击它
+      persistOutline(newOutline(newVirtualId(), title))
+    }
+  }
+
+  const addChildTo = (parentId: string) => {
+    if (!outline) return
+    const { outline: next, id } = outlineAttach(outline, parentId)
+    if (!id) return
+    persistOutline(next)
+    setPendingRenameId(id)
+    setSelected(id)
+  }
+
+  const addSiblingTo = (refId: string) => {
+    if (!outline) return
+    const { outline: next, id } = outlineInsertSibling(outline, refId)
+    if (!id) return
+    persistOutline(next)
+    setPendingRenameId(id)
+    setSelected(id)
+  }
+
+  const removeFrom = (id: string) => {
+    if (!outline) return
+    persistOutline(outlineDetach(outline, id))
+  }
+
+  const renameNode = (id: string, name: string) => {
+    if (!outline) return
+    persistOutline(outlineRename(outline, id, name))
+  }
+
+  const reparentNode = (childId: string, parentId: string | null) => {
+    if (!outline) return
+    const next = outlineReparent(outline, childId, parentId)
+    if (next !== outline) persistOutline(next)
+  }
+
+
   const seedPosition = async (id: string, world: { x: number; y: number; z: number }) => {
     if (!bookId) return
     try {
@@ -173,7 +282,29 @@ export function CatalogView({
 
     const live = new Set(mine.map((e) => e.id))
 
-    if (groupByTag) {
+    if (groupByTag && outlineOn && outline) {
+      // 自由结构模式：骨架是用户亲手搭的 —— 界面名根与标签分组不再自动生成。
+      // 根节点仍是界面名（想改名双击它），但它是结构的一员，不再是个甩不掉的钉子。
+      nodes.push({
+        id: outline.root,
+        name: outline.names[outline.root] ?? title,
+        type: '__root',
+        color: 'var(--accent)',
+        size: 20,
+      })
+      for (const [id, nm] of Object.entries(outline.names)) {
+        if (id === outline.root) continue
+        nodes.push({ id, name: nm, type: '__tag' })
+      }
+      const known = new Set<string>([outline.root, ...Object.keys(outline.names), ...live])
+      for (const [p, kids] of Object.entries(outline.children)) {
+        if (!known.has(p)) continue
+        for (const c of kids) {
+          if (c === p || !known.has(c)) continue
+          push(p, c, '包含')
+        }
+      }
+    } else if (groupByTag) {
       nodes.push({ id: ROOT, name: title, type: '__root' })
       const tags: string[] = []
       for (const e of mine) {
@@ -217,7 +348,14 @@ export function CatalogView({
     for (const n of nodes) n.degree = deg.get(n.id) ?? 0
 
     return { nodes, edges }
-  }, [data, mine, groupByTag, maxTagsPerNode, title])
+  }, [data, mine, groupByTag, maxTagsPerNode, title, outlineOn, outline])
+
+  // 结构模式：树的形状完全由用户的结构决定（不许 BFS 自行推理把层级打散）。
+  // 没挂进结构的实体照样画（连双链），只是落在孤儿行里 —— 不许悄悄消失。
+  const hierarchy = useMemo(() => {
+    if (!outlineOn || !outline) return null
+    return { root: outline.root, children: new Map(Object.entries(outline.children)) }
+  }, [outlineOn, outline])
 
   // 三维全景只吃真实实体 —— 导图里的「中心/标签分组」骨架节点是界面自造的，不进 3D
   const solid = useMemo(
@@ -362,6 +500,15 @@ export function CatalogView({
               >
                 ＋ 新建
               </button>
+              {mode === 'map' && (
+                <button
+                  className={`btn btn--sm ${outlineOn ? 'btn--on' : ''}`}
+                  onClick={toggleOutline}
+                  title="自由结构：自己搭层级 —— 选中节点后 Tab 加子级、Enter 加同级、拖到节点上换父级，WPS 思维导图式编辑"
+                >
+                  {outlineOn ? '✓ 自由结构' : '自由结构'}
+                </button>
+              )}
               <div className="seg" role="tablist" aria-label="布局">
                 {LAYOUT_LABELS.map((l) => (
                   <button
@@ -405,6 +552,23 @@ export function CatalogView({
               selectedId={selected}
               highlight={query}
               showLabels={showLabels}
+              hierarchy={hierarchy}
+              outline={
+                outlineOn && outline
+                  ? {
+                      active: true,
+                      parentIdOf: (id) => outlineParentOf(outline, id),
+                      isVirtual: (id) => isVirtualOutlineId(id),
+                      addChild: addChildTo,
+                      addSibling: addSiblingTo,
+                      remove: removeFrom,
+                      rename: renameNode,
+                      reparent: reparentNode,
+                      pendingRenameId,
+                      onRenameHandled: () => setPendingRenameId(null),
+                    }
+                  : undefined
+              }
               onSelect={(id) => {
                 // null = 点了空白，取消选中（P11-2️⃣②）
                 if (id === null) setSelected(null)
@@ -640,6 +804,13 @@ export function CatalogView({
             中心是「{title}」，一级分支是<strong>标签</strong>，二级是实体本身。
             实体的连线来自各自正文的「关联」一节里的 <code>[[双链]]</code> ——
             图只是把它画出来，改关系仍然只能去改实体。
+            {outlineOn && (
+              <>
+                {' '}
+                当前开着<strong>自由结构</strong>：骨架存在这本的 <code>view/scene.json</code> 里，
+                只记「谁挂在谁下面」，实体档案不动；没挂进结构的实体照常画在孤儿行。
+              </>
+            )}
           </p>
           {groupByTag && (
             <div className="row" style={{ marginTop: 'var(--p-space-3)' }}>
