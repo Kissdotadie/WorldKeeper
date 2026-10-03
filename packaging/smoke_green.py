@@ -93,7 +93,18 @@ def main() -> int:
     check("[2] import app 成功", r.returncode == 0,
           (r.stdout + r.stderr).strip()[:160])
     ver = r.stdout.strip() if r.returncode == 0 else ""
-    check("[2] 版本号读得到", ver == "0.1.0", ver or "(空)")
+    # 期望值从**源码**读，不写死 —— 写死的那版会在每次发版时假失败
+    # （0.1.0 → 0.2.0 就撞过一次：包是好的，断言是旧的）
+    want = ""
+    try:
+        for line in (ROOT / "app" / "__init__.py").read_text(encoding="utf-8").splitlines():
+            if line.startswith("__version__"):
+                want = line.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+    except Exception:
+        pass
+    check("[2] 版本号读得到", bool(ver) and (not want or ver == want),
+          f"包内 {ver or '(空)'} / 源码 {want or '(读不到)'}")
 
     # ---- [3] 第三方依赖（..\Lib\site-packages 那行）--------------------
     r = run_py(["-c",
