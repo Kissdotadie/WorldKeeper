@@ -20,6 +20,7 @@ import { Graph2D } from '../graph/Graph2D'
 import { Graph3D } from '../graph/Graph3D'
 import { useSceneStyles } from '../graph/useSceneStyles'
 import { useStyleResolver } from '../graph/useStyleResolver'
+import { useOutlineEdit } from '../graph/useOutlineEdit'
 import { LAYOUT_LABELS, typeColorVar, type GEdge, type GNode, type LayoutKind } from '../graph/types'
 
 const LAYOUT_KEY = 'wkv.graphLayout'
@@ -77,6 +78,13 @@ export function RelationView() {
   // 样式包（装饰层，存 view/styles/ + view/nodes.json）。2D 全接，3D 只接颜色与大小。
   const sr = useStyleResolver()
   const layout: LayoutKind = layoutPick ?? sr.layout
+
+  // ---- 自由结构（WPS 式思维导图编辑）----
+  // 关系网是一张**网**：边来自 [[双链]]，没有天然的层级。结构模式在这里的
+  // 意义是「在网上面加一层自己的归拢」—— 把关心的一簇拉进树里，其余照旧
+  // 留在孤儿行（它们本来就靠双链连着，不会看不出关系）。
+  // 所以这一页的 hierarchy **不做合成**：没挂进结构的就是没归位。
+  const oe = useOutlineEdit({ sceneKey: 'relation', title: '关系网', onSelect: setSelected })
 
   const load = () => {
     if (!bookId) return
@@ -187,6 +195,32 @@ export function RelationView() {
   const labelOf = (key: string) =>
     types.find((t) => t.key === key)?.label ?? data?.type_labels?.[key] ?? '未录入'
 
+  /**
+   * 结构模式下额外要画的骨架（根 + 自由节点 + 包含边）。
+   * 实体节点本来就在 `view` 里，这里只**补**结构自造的那几个，别重复加。
+   */
+  const viewPlus = useMemo(() => {
+    if (!oe.on || !oe.outline) return view
+    const sk = oe.skeleton()
+    const have = new Set(view.nodes.map((n) => n.id))
+    const nodes = [...view.nodes]
+    for (const n of sk.nodes) {
+      if (have.has(n.id)) continue
+      have.add(n.id)
+      nodes.push({ ...n, degree: 2 })
+    }
+    const seen = new Set(view.edges.map((e) => `${e.source}\u0000${e.target}`))
+    const edges = [...view.edges]
+    for (const e of sk.edges) {
+      const k = `${e.source}\u0000${e.target}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      edges.push(e)
+    }
+    return { nodes, edges }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, oe.on, oe.outline])
+
   // ---- 选中节点的关系明细 ----
   const detail = useMemo(() => {
     if (!data || !selected) return null
@@ -226,6 +260,15 @@ export function RelationView() {
                 三维
               </button>
             </div>
+            {dim === '2d' && (
+              <button
+                className={`btn btn--sm ${oe.on ? 'btn--on' : ''}`}
+                onClick={oe.toggle}
+                title="自由结构：在网上面加一层自己的归拢 —— 选中节点后 Tab 加子级、Enter 加同级、拖到节点上换父级。边仍然来自 [[双链]]，这里只理层级"
+              >
+                {oe.on ? '✓ 自由结构' : '自由结构'}
+              </button>
+            )}
             {dim === '2d' && (
               <div className="seg" role="tablist" aria-label="布局">
                 {LAYOUT_LABELS.map((l) => (
@@ -329,11 +372,16 @@ export function RelationView() {
             <Graph2D
               {...gEdit.graphProps}
               {...sr.g2d}
-              nodes={view.nodes}
-              edges={view.edges}
+              outlineAvailable
+              onEnableOutline={oe.toggle}
+              nodes={viewPlus.nodes}
+              edges={viewPlus.edges}
               layout={layout}
-              rootId={rootId}
+              rootId={oe.on && oe.outline ? oe.outline.root : rootId}
               selectedId={selected}
+              hierarchy={oe.hierarchy}
+              outline={oe.editApi}
+              noteOf={oe.noteOf}
               onSelect={(id) => setSelected(id)}
               onPickRoot={(id) => {
                 setRootId(id)

@@ -25,6 +25,7 @@ from . import (
     jobs,
     layouts,
     maps,
+    outline,
     sample,
     skills,
     styles,
@@ -51,6 +52,7 @@ router.include_router(docs.router)
 router.include_router(appearance.router)
 router.include_router(layouts.router)
 router.include_router(maps.router)
+router.include_router(outline.router)  # 思维导图大纲导入：解析 + 角色初判，只读不写
 router.include_router(styles.router)
 router.include_router(vision.router)
 router.include_router(admin.router)

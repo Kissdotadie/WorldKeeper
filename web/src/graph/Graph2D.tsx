@@ -47,7 +47,7 @@ import {
 } from './styles'
 import { assetUrlOf } from '../api/client'
 import { GraphEditGuide } from '../components/GraphEditGuide'
-import { hasSeenGraphGuide } from '../lib/graphGuide'
+import { hasSeenGraphGuide, markGraphGuideSeen } from '../lib/graphGuide'
 
 interface SimNode extends GNode, SimulationNodeDatum {}
 type SimLink = SimulationLinkDatum<SimNode> & { kind?: string | null }
@@ -81,6 +81,17 @@ interface Props {
   rootId?: string | null
   /** 选中某个节点；**传 null = 点了空白，取消选中**（P11-2️⃣②） */
   onSelect?: (id: string | null) => void
+  /**
+   * 这个视图**能**开「自由结构」（哪怕现在还没开）。
+   *
+   * 为什么要单独一个 prop：地理观/关系网这类视图，结构开关没开的时候
+   * `outline` 是 undefined，迷你工具条整个不渲染 —— 用户选中一个节点，
+   * 看不到任何「加子级/同级」的入口，会以为功能是坏的。
+   * 有了这个标记，就能在那种时候给出一个明确的「开启自由结构」按钮。
+   */
+  outlineAvailable?: boolean
+  /** 点迷你条上的「开启自由结构」 */
+  onEnableOutline?: () => void
   /** Alt+双击：把某个节点设为布局的根（普通双击让位给「就地编辑」） */
   onPickRoot?: (id: string) => void
   /** 搜索高亮串 */
@@ -129,6 +140,11 @@ interface Props {
    * 与 `outline` 分开传：布局要的是纯数据，编辑要的是回调。
    */
   hierarchy?: { root: string; children: Map<string, string[]> } | null
+  /**
+   * 节点 → 描述文本（导入大纲时识别出的那些「说明」）。
+   * 非空时画在名字下方的小字里 —— 说明和节点是两回事，得看得见区别。
+   */
+  noteOf?: (id: string) => string
 
   // ---- 样式系统（P5）----
   /** 节点该长什么样。不传 = 老行为：圆节点 + 按类型上色 */
@@ -157,12 +173,28 @@ function ShapeEl({
   geom,
   className,
   style,
+  halo,
 }: {
   geom: ReturnType<typeof shapeGeom>
   className?: string
   style?: React.CSSProperties
+  /**
+   * 环的来由，渲染成 `data-halo`。
+   *
+   * 为什么要区分：`.graph__halo` 同时承载**四种**来由 ——
+   * 样式包规则里的 `highlight`（type/tag 规则命中，可能好几个）、
+   * 搜索命中、拖拽落点、以及「当前选中」。
+   * 验收脚本要断的是「选中」，用 class 计数会把前三种一起算进去
+   * （人物类型挂了 highlight 规则时，光样式环就 3 个），
+   * 于是「halo=1 表示选中了」这条断言会莫名其妙失败。
+   * 给个稳定锚点，断言就能精确指向它真正关心的那一种。
+   */
+  halo?: 'style' | 'hit' | 'sel' | 'drop'
 }) {
-  if (geom.kind === 'circle') return <circle r={geom.r} className={className} style={style} />
+  const anchor = halo ? { 'data-halo': halo } : {}
+  if (geom.kind === 'circle') {
+    return <circle r={geom.r} className={className} style={style} {...anchor} />
+  }
   if (geom.kind === 'rect') {
     return (
       <rect
@@ -173,10 +205,11 @@ function ShapeEl({
         rx={geom.rx}
         className={className}
         style={style}
+        {...anchor}
       />
     )
   }
-  return <polygon points={geom.points} className={className} style={style} />
+  return <polygon points={geom.points} className={className} style={style} {...anchor} />
 }
 
 /** 图上这个节点的「视觉半径」，用来裁连线端点 —— 形状不同，能碰到的地方也不同 */
@@ -249,6 +282,9 @@ export function Graph2D({
   children,
   outline,
   hierarchy,
+  noteOf,
+  outlineAvailable,
+  onEnableOutline,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const sizeRef = useRef({ w: 900, h: 600 })
@@ -258,6 +294,16 @@ export function Graph2D({
   const [hover, setHover] = useState<string | null>(null)
   // 一次性引导（P11-2️⃣①）：初值来自 localStorage，看过就不再弹
   const [guideSeen, setGuideSeen] = useState(() => hasSeenGraphGuide())
+  // 上一轮画出来的节点 id 集合 —— 用来判断「这批变化是新视图还是小改动」
+  const prevIdsRef = useRef<Set<string> | null>(null)
+  // 上一次「适配」时画布多大。尺寸微变（往往只是滚动条一进一出）不该重新适配：
+  // 加一个节点让内容变长 → 面板冒出滚动条 → 画布窄了 15px → ResizeObserver 一响，
+  // 整张图就跟着缩 0.3%，看着就是「画面自己抖了一下」。
+  const lastFitSizeRef = useRef<{ w: number; h: number } | null>(null)
+  // 视野的实时值。maybeRefit 要读它算屏幕坐标，但**不能**进依赖 ——
+  // 否则拖一下画面就把整棵树重新布局一遍。
+  const tRef = useRef(t)
+  tRef.current = t
 
   // 连线拖拽：从哪个节点起、拖到哪了
   const [linkFrom, setLinkFrom] = useState<{ id: string; name: string; x: number; y: number } | null>(null)
@@ -335,7 +381,63 @@ export function Graph2D({
     const cy = (b.minY + b.maxY) / 2
     setT({ k, x: w / 2 - cx * k, y: h / 2 - cy * k })
     userMovedRef.current = false
+    lastFitSizeRef.current = { ...sizeRef.current }
   }, [])
+
+  /**
+   * 决定这一轮布局之后要不要动视野。
+   *
+   * **这是「思维导图像 WPS」的关键一环。** 早先这里是每次布局完都无脑
+   * `fitTo` —— 加一个子级，922 个节点全部重排，然后整张图按新的边界
+   * 重新缩放归位：画面猛地一缩、光标底下的东西飞走，写两个字就得
+   * 重新找自己在哪。WPS 之所以不这样，是因为它加节点时**视野根本不动**。
+   *
+   * 规则：
+   *  - 「换了一批节点」（重叠率 < 50%：切视图、切类型切片、开/关结构、导入）
+   *    或「换了布局/根」→ 重新适配，这是人预期内的画面切换；
+   *  - 只是加/删/改名了少数节点（重叠率高）→ **视野纹丝不动**，
+   *    但如果恰好只新增了一个节点且它落在画面外，就平移最少的距离把它带进来
+   *    —— 这正是 WPS 新建子级后让你立刻看到新节点的那一下。
+   */
+  const maybeRefit = useCallback(
+    (p: Map<string, Pt>) => {
+      const ids = new Set(p.keys())
+      const prev = prevIdsRef.current
+      prevIdsRef.current = ids
+
+      let overlap = 0
+      if (prev) {
+        let same = 0
+        for (const id of ids) if (prev.has(id)) same++
+        overlap = same / Math.max(prev.size, ids.size, 1)
+      }
+      const key = `${layout}:${rootId ?? ''}`
+      const isNewView = !prev || overlap < 0.5
+      const isLayoutChange = fittedForRef.current !== key
+      fittedForRef.current = key
+
+      if (isNewView || isLayoutChange) {
+        fitTo(p)
+        return
+      }
+
+      // 小改动：只把「刚出生的那一个」带进视野，其余照旧
+      const added: string[] = []
+      for (const id of ids) if (prev && !prev.has(id)) added.push(id)
+      if (added.length !== 1) return
+      const np = p.get(added[0])
+      if (!np) return
+      const { w, h } = sizeRef.current
+      const cur = tRef.current
+      const sx = np.x * cur.k + cur.x
+      const sy = np.y * cur.k + cur.y
+      const M = 60 // 留一圈呼吸边距，别让新节点贴着边
+      const dx = sx < M ? M - sx : sx > w - M ? w - M - sx : 0
+      const dy = sy < M ? M - sy : sy > h - M ? h - M - sy : 0
+      if (dx || dy) setT((c) => ({ ...c, x: c.x + dx, y: c.y + dy }))
+    },
+    [fitTo, layout, rootId],
+  )
 
   // ---- 计算布局 ----
   useEffect(() => {
@@ -378,8 +480,7 @@ export function Graph2D({
       simRef.current = sim
       simNodesRef.current = simNodes
       setPos(p)
-      fitTo(p)
-      fittedForRef.current = `${layout}:${nodes.length}`
+      maybeRefit(p)
       return
     }
 
@@ -387,13 +488,23 @@ export function Graph2D({
     simNodesRef.current = []
     const p = layoutStatic(layout, nodes, edges, rootId, hierarchy ?? null)
     setPos(p)
-    fitTo(p)
-    fittedForRef.current = `${layout}:${nodes.length}`
-  }, [nodes, edges, layout, rootId, fitTo, radiusOf, hierarchy])
+    maybeRefit(p)
+  }, [nodes, edges, layout, rootId, fitTo, radiusOf, hierarchy, maybeRefit])
 
-  // 尺寸变化：用户没手动拖过视野就重新适配
+  // 尺寸变化：用户没手动动过视野、且变化足够大，才重新适配。
+  // 「足够大」这一条是必须的 —— 滚动条一进一出就会让 ResizeObserver 响一次，
+  // 那种 1% 级别的抖动不该动画面（见 lastFitSizeRef 的注释）。
   useEffect(() => {
-    if (!userMovedRef.current && pos.size) fitTo(pos)
+    if (userMovedRef.current || !pos.size) return
+    const prev = lastFitSizeRef.current
+    if (!prev) {
+      fitTo(pos)
+      return
+    }
+    const dw = Math.abs(size.w - prev.w) / Math.max(prev.w, 1)
+    const dh = Math.abs(size.h - prev.h) / Math.max(prev.h, 1)
+    if (dw < 0.08 && dh < 0.08) return
+    fitTo(pos)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size])
 
@@ -454,11 +565,18 @@ export function Graph2D({
 
   // 外层刚建好一个自由节点 → 自动进入改名（WPS 的新节点手感：建完就打字）
   useEffect(() => {
-    if (!oEdit?.pendingRenameId) return
-    startRename(oEdit.pendingRenameId)
-    oEdit.onRenameHandled?.()
+    const pid = oEdit?.pendingRenameId
+    if (!pid) return
+    // 节点可能还没进这一帧的图（结构与图是同一次更新里的两件事），
+    // 那就先不清标记，等 byId 补上再触发 —— 早先这里 `startRename` 遇到
+    // 找不到 def 就直接 return，但标记已经被清掉了，于是「新节点自动改名」
+    // 时灵时不灵。
+    if (!byId.get(pid)) return
+    setRenaming({ id: pid, value: byId.get(pid)!.name })
+    oEdit?.onRenameHandled?.()
+    // oEdit 是外层每次渲染新建的对象，不能进依赖 —— 只认「待改名的是谁」和节点表
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oEdit?.pendingRenameId])
+  }, [oEdit?.pendingRenameId, byId])
 
   // 结构模式快捷键。改名输入框是 INPUT，这里的裸键默认不会在打字时触发
   useShortcuts(
@@ -686,6 +804,16 @@ export function Graph2D({
     return out
   }, [edges, pos, edgeStyle?.curve])
 
+  // 引导浮层讲完该讲的就让位：用户一旦真的动手（选中节点 / 进连线 / 就地改名），
+  // 这块卡就该收起来 —— 它 z-index 6、迷你工具条 z-index 5，两者都在 .graph 左上角
+  // 一带时**卡正好压住「＋子级」那一排**，点下去落空，看起来就是「按钮点了没反应」。
+  useEffect(() => {
+    if (guideSeen) return
+    if (!selectedId && !renaming && !linkFrom) return
+    markGraphGuideSeen()
+    setGuideSeen(true)
+  }, [guideSeen, selectedId, renaming, linkFrom])
+
   const posOf = (id: string): Pt => pos.get(id) ?? { x: 0, y: 0 }
 
   return (
@@ -783,7 +911,11 @@ export function Graph2D({
           )}
 
           {/* 节点 */}
-          <g className="graph__nodes">
+          {/* 力导向布局的坐标每帧都在变，加过渡只会拖着影子跑；
+              静态布局（树/放射/鱼骨…）重排时给个 180ms 的滑动，
+              加子级/换父就是「节点们滑到新家」而不是「闪一下换了一幅画」。
+              拖拽中的那一个节点要即时跟手，见下面 graph__node--snap。 */}
+          <g className={`graph__nodes ${layout !== 'force' ? 'graph__nodes--anim' : ''}`}>
             {nodes.map((n) => {
               const p = posOf(n.id)
               const r = radiusOf(n)
@@ -803,6 +935,7 @@ export function Graph2D({
                 <g
                   key={n.id}
                   data-nid={n.id}
+                  className={dragRef.current === n.id ? 'graph__node--snap' : undefined}
                   transform={`translate(${p.x},${p.y})`}
                   style={{
                     cursor:
@@ -851,6 +984,7 @@ export function Graph2D({
                     <ShapeEl
                       geom={shapeGeom(shape, r + 4)}
                       className="graph__halo"
+                      halo="style"
                       style={{ stroke: fill, opacity: 0.55 }}
                     />
                   )}
@@ -858,6 +992,7 @@ export function Graph2D({
                     <ShapeEl
                       geom={shapeGeom(shape, r + 6)}
                       className="graph__halo"
+                      halo={dropTarget === n.id ? 'drop' : hit ? 'hit' : 'sel'}
                       style={{
                         stroke: dropTarget === n.id ? 'var(--accent)' : hit ? 'var(--warn)' : 'var(--accent)',
                         opacity: dropTarget === n.id ? 0.9 : undefined,
@@ -904,6 +1039,25 @@ export function Graph2D({
                       {shortName(n.name, t.k > 1 ? 10 : 5)}
                     </text>
                   )}
+                  {/* 描述：导入大纲时被判为「说明」的那些文本。画在名字下面一行，
+                      字号更小、颜色更淡 —— 一眼分得清「这是节点」还是「这是它的注脚」。
+                      多条描述换行拼在一起，这里只露头一行，全文在悬停提示里。 */}
+                  {(() => {
+                    const note = (noteOf?.(n.id) ?? '').replace(/\s+/g, ' ').trim()
+                    if (!note || !labelOn || t.k <= 0.55) return null
+                    const baseY = geom.kind === 'rect' ? geom.h / 2 + 12 : r + 12
+                    return (
+                      <text
+                        className="graph__note"
+                        y={baseY + 13}
+                        textAnchor="middle"
+                        style={{ fontSize: `${(9.5 * labelScale).toFixed(1)}px` }}
+                      >
+                        <title>{noteOf?.(n.id)}</title>
+                        {shortName(note, t.k > 1 ? 16 : 8)}
+                      </text>
+                    )
+                  })()}
                 </g>
               )
             })}
@@ -948,6 +1102,27 @@ export function Graph2D({
                 {isVirt ? '删除' : '摘下'}
               </button>
             )}
+          </div>
+        )
+      })()}
+
+      {/* 结构还没开但这个视图能开：别让人选中节点后对着一片空白发愣 ——
+          地理观/关系网一开始就是这样，看着像「加子级是坏的」，
+          其实只差一个开关。给他一个一键到位的按钮。 */}
+      {!oEdit && outlineAvailable && selectedId && editable && !renaming && pos.has(selectedId) && (() => {
+        const p = pos.get(selectedId)!
+        return (
+          <div
+            className="graph__outline-bar"
+            style={{ left: p.x * t.k + t.x, top: p.y * t.k + t.y }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button
+              title="开了它，才能在图上加子级/同级、拖拽换父（结构只记摆法，不动档案）"
+              onClick={() => onEnableOutline?.()}
+            >
+              ✨ 开启自由结构
+            </button>
           </div>
         )
       })()}

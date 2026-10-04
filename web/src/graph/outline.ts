@@ -22,6 +22,17 @@ export interface OutlineState {
   children: Record<string, string[]>
   /** 自由节点的名字。实体节点不在这里 —— 名字永远以实体档案为准 */
   names: Record<string, string>
+  /**
+   * 节点 → 描述文本（导入大纲时用）。
+   *
+   * 从思维导图导出的文档里，「子级」和「描述」长得一模一样（都是子节点），
+   * 导入面板把它们分开之后：「子级」建成节点，**「描述」不建节点**，
+   * 落到这里挂在它说明的那个节点名下，图上作为小字显示。
+   *
+   * 为什么不落进实体档案：铁律 1 —— 工具绝不改写正文，只产待确认清单。
+   * 所以它留在装饰层，跟着结构走；结构丢了最多重新导一次。
+   */
+  notes?: Record<string, string>
 }
 
 export const VIRTUAL_PREFIX = '__outline__:'
@@ -47,11 +58,27 @@ function clone(o: OutlineState): OutlineState {
     root: o.root,
     children: { ...o.children },
     names: { ...o.names },
+    ...(o.notes ? { notes: { ...o.notes } } : {}),
   }
 }
 
 export function outlineName(o: OutlineState, id: string): string | null {
   return o.names[id] ?? null
+}
+
+/** 某个节点的描述文本（导入时识别出的那些） */
+export function outlineNote(o: OutlineState, id: string): string {
+  return o.notes?.[id] ?? ''
+}
+
+/** 追加一段描述到节点名下（多条用空行分隔，保持先后顺序） */
+export function outlineAppendNote(o: OutlineState, id: string, text: string): OutlineState {
+  const clean = text.trim()
+  if (!clean) return o
+  const next = clone(o)
+  const prev = next.notes?.[id]
+  next.notes = { ...(next.notes ?? {}), [id]: prev ? `${prev}\n\n${clean}` : clean }
+  return next
 }
 
 export function outlineChildren(o: OutlineState, id: string): string[] {
@@ -160,7 +187,10 @@ export function outlineDetach(o: OutlineState, id: string): OutlineState {
     next.children[parent] = siblings
   }
   delete next.children[id]
-  if (isVirtualOutlineId(id)) delete next.names[id]
+  if (isVirtualOutlineId(id)) {
+    delete next.names[id]
+    if (next.notes) delete next.notes[id]
+  }
   return next
 }
 

@@ -47,7 +47,7 @@ const VIEWS: { key: View; label: string; desc: string; hint: string }[] = [
 /** 完备度四档的名字。0 分 = 真的只有一个名字。 */
 const COMPLETENESS_NAMES = ['只有名字', '有摘要或标签', '差一项就齐', '基本齐了', '很完整']
 
-export function DashboardView({ onNewEntity, onNewBook, onRebuild, rebuilding }: Props) {
+export function DashboardView({ onNewEntity, onRebuild, rebuilding }: Props) {
   const {
     entities, stats, tags, types, books, bookId, setView, openEntity, setTypeFilter, setTagFilter,
     prefs,
@@ -535,29 +535,6 @@ export function DashboardView({ onNewEntity, onNewBook, onRebuild, rebuilding }:
               ))}
             </ul>
           </StateGate>
-        </Panel>
-
-        <Panel title="快捷操作">
-          <div className="actions">
-            <button className="action-card" onClick={() => onNewEntity()}>
-              <span className="action-card__title">新建实体</span>
-              <span className="action-card__desc">逐条录入一条人物、地点…</span>
-              <span className="action-card__key">Ctrl+N</span>
-            </button>
-            <button className="action-card" onClick={() => setView('text')}>
-              <span className="action-card__title">批量导入</span>
-              <span className="action-card__desc">把设定表整段贴进来，先过清单再落盘</span>
-              <span className="action-card__key">Ctrl+I</span>
-            </button>
-            <button className="action-card" onClick={onNewBook}>
-              <span className="action-card__title">新建书目</span>
-              <span className="action-card__desc">开一本新书，多书并行互不影响</span>
-            </button>
-            <button className="action-card" onClick={onRebuild} disabled={rebuilding}>
-              <span className="action-card__title">{rebuilding ? '重建中…' : '重建索引'}</span>
-              <span className="action-card__desc">索引坏了/删了/改乱了，一键恢复</span>
-            </button>
-          </div>
         </Panel>
 
         <Panel title="当前书目">

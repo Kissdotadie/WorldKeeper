@@ -23,6 +23,7 @@ import { StickerLayer, StickerPanel } from '../components/StickerLayer'
 import { StateGate } from '../components/Toast'
 import { Graph2D } from '../graph/Graph2D'
 import { Graph3D } from '../graph/Graph3D'
+import { OutlineImportPanel } from '../components/OutlineImportPanel'
 import { useSceneStyles } from '../graph/useSceneStyles'
 import { useStyleResolver } from '../graph/useStyleResolver'
 import { LAYOUT_LABELS } from '../graph/types'
@@ -191,9 +192,26 @@ export function CatalogView({
     }
   }
 
+  /**
+   * 结构里没有的节点先「收养」进来（挂到根下），再返回新的结构。
+   *
+   * 地理观尤其常见：地点平时就是图上一颗颗孤立的点，用户选中它直接按
+   * Tab —— 如果不先收养，`outlineAttach` 会因为「父级不在结构里」而拒绝，
+   * 按了毫无反应。这也是把 CatalogView 的结构编辑独立成 hook 的第一动力，
+   * 只是这儿还留着内联版，先把行为补齐（见 useOutlineEdit 的同名逻辑）。
+   */
+  const adoptInto = (o: OutlineState, id: string): OutlineState => {
+    if (id === o.root) return o
+    if (Object.prototype.hasOwnProperty.call(o.names, id)) return o
+    if (Object.prototype.hasOwnProperty.call(o.children, id)) return o
+    for (const kids of Object.values(o.children)) if (kids.includes(id)) return o
+    const r = outlineAttach(o, o.root, id)
+    return r.id ? r.outline : o
+  }
+
   const addChildTo = (parentId: string) => {
     if (!outline) return
-    const { outline: next, id } = outlineAttach(outline, parentId)
+    const { outline: next, id } = outlineAttach(adoptInto(outline, parentId), parentId)
     if (!id) return
     persistOutline(next)
     setPendingRenameId(id)
@@ -202,7 +220,7 @@ export function CatalogView({
 
   const addSiblingTo = (refId: string) => {
     if (!outline) return
-    const { outline: next, id } = outlineInsertSibling(outline, refId)
+    const { outline: next, id } = outlineInsertSibling(adoptInto(outline, refId), refId)
     if (!id) return
     persistOutline(next)
     setPendingRenameId(id)
@@ -225,6 +243,36 @@ export function CatalogView({
     if (next !== outline) persistOutline(next)
   }
 
+  // ---- 导入思维导图大纲 ----
+  // 手里那堆 `旧世界.mm` / `思维导图大纲.docx` 终于能直接进来，不用再照着手敲。
+  // 面板里人已经逐条确认过「谁是谁的子级、谁只是描述」，所以这里**直接落盘**，
+  // 不走 400ms 防抖 —— 导入是批量动作，用户点完「导入」就可能关页面。
+  const [importOpen, setImportOpen] = useState(false)
+  const applyOutlineImport = useCallback(
+    async (next: OutlineState, nodeCount: number) => {
+      setImportOpen(false)
+      setOutline(next)
+      if (!outlineOn) {
+        setOutlineOn(true)
+        try {
+          localStorage.setItem(`wkv.outline.${title}`, '1')
+        } catch {
+          /* 忽略 */
+        }
+      }
+      if (!bookId) return
+      const scene: api.SceneState = { ...(sceneRef.current ?? {}) }
+      scene.outlines = { ...(scene.outlines ?? {}), [sceneKey]: next }
+      sceneRef.current = scene
+      try {
+        await api.saveScene(bookId, scene)
+        notify('ok', `大纲已导入：结构里新增 ${nodeCount} 个节点，可继续拖拽调整`)
+      } catch (e) {
+        notify('err', `导入落盘失败：${(e as Error).message}`)
+      }
+    },
+    [bookId, sceneKey, outlineOn, title, notify],
+  )
 
   const seedPosition = async (id: string, world: { x: number; y: number; z: number }) => {
     if (!bookId) return
@@ -356,6 +404,9 @@ export function CatalogView({
     if (!outlineOn || !outline) return null
     return { root: outline.root, children: new Map(Object.entries(outline.children)) }
   }, [outlineOn, outline])
+
+  /** 导入大纲时识别出的「描述」—— 画在节点名字下面，与真节点区分开 */
+  const noteOf = useCallback((id: string) => outline?.notes?.[id] ?? '', [outline])
 
   // 三维全景只吃真实实体 —— 导图里的「中心/标签分组」骨架节点是界面自造的，不进 3D
   const solid = useMemo(
@@ -509,6 +560,15 @@ export function CatalogView({
                   {outlineOn ? '✓ 自由结构' : '自由结构'}
                 </button>
               )}
+              {mode === 'map' && (
+                <button
+                  className="btn btn--sm"
+                  onClick={() => setImportOpen(true)}
+                  title="导入思维导图大纲（.mm / .docx / .md）：自动还原层级，并区分「子级」与「描述」—— 你确认之后才写入"
+                >
+                  导入大纲
+                </button>
+              )}
               <div className="seg" role="tablist" aria-label="布局">
                 {LAYOUT_LABELS.map((l) => (
                   <button
@@ -545,6 +605,8 @@ export function CatalogView({
             <Graph2D
               {...gEdit.graphProps}
               {...sr.g2d}
+              outlineAvailable
+              onEnableOutline={toggleOutline}
               nodes={graph.nodes}
               edges={graph.edges}
               layout={layout}
@@ -553,6 +615,7 @@ export function CatalogView({
               highlight={query}
               showLabels={showLabels}
               hierarchy={hierarchy}
+              noteOf={noteOf}
               outline={
                 outlineOn && outline
                   ? {
@@ -883,6 +946,19 @@ export function CatalogView({
       </div>
 
       {gEdit.layer}
+
+      {importOpen && bookId && (
+        <OutlineImportPanel
+          bookId={bookId}
+          title={title}
+          resolveEntityId={(name) => mine.find((e) => e.name === name)?.id ?? null}
+          onClose={() => setImportOpen(false)}
+          onApply={(next) => {
+            const n = Object.keys(next.names).length + Object.keys(next.children).length
+            void applyOutlineImport(next, n)
+          }}
+        />
+      )}
     </div>
   )
 }

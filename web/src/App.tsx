@@ -147,7 +147,13 @@ function Shell() {
   return (
     <div className="shell shell--rail">
       <TypeColorStyle />
-      <TopBar onNewEntity={() => setOverlay({ kind: 'form', editing: null })} layouts={layouts} />
+      <TopBar
+        onNewEntity={() => setOverlay({ kind: 'form', editing: null })}
+        onNewBook={() => setOverlay({ kind: 'book' })}
+        onRebuild={rebuild}
+        rebuilding={rebuilding}
+        layouts={layouts}
+      />
 
       <DonateAlertBar />
 

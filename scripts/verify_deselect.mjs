@@ -33,6 +33,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const key = (type, opts) => send('Input.dispatchKeyEvent', { type, ...opts })
 
 await send('Runtime.enable')
+// 世界观可能开着「自由结构」——那种模式下图上大半是 __outline__ 虚拟节点，
+// 选中它们没有实体档案，侧栏那张「选中」卡（连同 ✕）就不会出现。
+// 本脚本验的是**实体**选中态的取消，所以先关掉结构，回到它最初面对的场景。
+await ev(`try{localStorage.setItem('wkv.outline.世界观','0')}catch(e){}`)
 await send('Page.navigate', { url: `http://127.0.0.1:${PORT}` })
 await sleep(3500)
 
@@ -43,17 +47,45 @@ await sleep(1500)
 await ev(`(() => { const b=[...document.querySelectorAll('button')].find(x=>x.innerText.trim()==='平面'); b?.click(); return 1 })()`)
 await sleep(1200)
 
-const haloCount = () => ev(`document.querySelectorAll('.graph__halo').length`)
+/**
+ * 只数「当前选中」那一种环。
+ *
+ * `.graph__halo` 有四种来由：样式包的 highlight 规则、搜索命中、拖拽落点、
+ * 当前选中。这本脚本验的是「选中/取消选中」，用 class 总数会被样式配置污染
+ * ——比如往人物类型挂一条 highlight 规则，光样式环就多出好几个。Graph2D 现在
+ * 把它们分别渲染成 data-halo="style|hit|sel|drop"，这里精确取 "sel"。
+ */
+const haloCount = () => ev(`document.querySelectorAll('[data-halo="sel"]').length`)
+/**
+ * 取一个**真的能点到**的节点。
+ *
+ * 早先取「所有 [data-nid] 里正中间那个」—— 世界观的结构现在有几百个节点，
+ * 正中间那个十有八九在视野外（世界坐标离屏，DOM 里仍有 rect），合成点击落
+ * 到别的 UI 上，于是整条序列全是 0，看起来像「选中坏了」。
+ * 现在：只挑中心点落在画布内、且 elementFromPoint 确实命中它自己的节点。
+ */
 const nodeInfo = () => ev(`(() => {
-  const els = [...document.querySelectorAll('[data-nid]')]
-  if (!els.length) return null
-  const el = els[Math.floor(els.length / 2)]
-  const r = el.getBoundingClientRect()
-  return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), id: el.getAttribute('data-nid') }
+  const svg = document.querySelector('.graph__svg')
+  if (!svg) return null
+  const sr = svg.getBoundingClientRect()
+  for (const el of document.querySelectorAll('[data-nid]')) {
+    const id = el.getAttribute('data-nid')
+    // 界面自造的骨架节点（__root / __tag / __outline__:…）没有实体档案，
+    // 选中它们不会开侧栏详情卡 —— ✕ 那条断言就假失败了。
+    if (id.startsWith('__')) continue
+    const r = el.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) continue
+    const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2)
+    if (x < sr.left + 4 || x > sr.right - 4 || y < sr.top + 4 || y > sr.bottom - 4) continue
+    const hit = document.elementFromPoint(x, y)
+    if (!hit || hit.closest('[data-nid]') !== el) continue
+    return { x, y, id }
+  }
+  return null
 })()`)
 
 const out = {}
-out['打开视图后 halo 数'] = await haloCount()
+out['打开视图后选中环数'] = await haloCount()
 
 // —— 1. 点节点选中 ——
 const n = await nodeInfo()
@@ -61,19 +93,19 @@ if (!n) { console.log('没有可点的节点，验收中止'); ws.close(); proce
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: n.x, y: n.y, button: 'left', clickCount: 1 })
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: n.x, y: n.y, button: 'left', clickCount: 1 })
 await sleep(900)
-out[`点节点(${n.id})后 halo 数`] = await haloCount()
+out[`点节点(${n.id})后选中环数`] = await haloCount()
 
 // —— 2. Esc 取消 ——
 await key('keyDown', { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 })
 await key('keyUp', { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 })
 await sleep(700)
-out['Esc 后 halo 数'] = await haloCount()
+out['Esc 后选中环数'] = await haloCount()
 
 // —— 3. 再选中 → 点空白取消 ——
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: n.x, y: n.y, button: 'left', clickCount: 1 })
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: n.x, y: n.y, button: 'left', clickCount: 1 })
 await sleep(900)
-out['再次点节点后 halo 数'] = await haloCount()
+out['再次点节点后选中环数'] = await haloCount()
 
 /**
  * 找一个**确实是画布空白**的点。
@@ -111,7 +143,7 @@ out['空白点'] = `${bg.x},${bg.y} → ${bg.hit}`
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: bg.x, y: bg.y, button: 'left', clickCount: 1 })
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bg.x, y: bg.y, button: 'left', clickCount: 1 })
 await sleep(900)
-out['点空白后 halo 数'] = await haloCount()
+out['点空白后选中环数'] = await haloCount()
 
 // —— 3b. 拖动画布不应把选中丢掉 ——
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: n.x, y: n.y, button: 'left', clickCount: 1 })
@@ -126,7 +158,7 @@ for (let i = 1; i <= 6; i++) {
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bg.x + 84, y: bg.y + 48, button: 'left', clickCount: 1 })
 await sleep(700)
 out['拖动画布前 halo 数'] = beforeDrag
-out['拖动画布后 halo 数'] = await haloCount()
+out['拖动画布后选中环数'] = await haloCount()
 
 // —— 3c. 侧栏详情卡的 ✕ 也能取消选中（P11-2️⃣②）——
 // 上一步拖过画布，节点屏幕坐标已经变了，必须重新取一次
@@ -147,7 +179,7 @@ if (closeBtn) {
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: closeBtn.x, y: closeBtn.y, button: 'left', clickCount: 1 })
   await sleep(800)
 }
-out['点 ✕ 后 halo 数'] = await haloCount()
+out['点 ✕ 后选中环数'] = await haloCount()
 out['点 ✕ 后详情卡收起'] = await ev(`!document.querySelector('.panel__close')`)
 
 // —— 4. A2 迁移回归：Ctrl+K 聚焦搜索、Ctrl+N 开表单 ——

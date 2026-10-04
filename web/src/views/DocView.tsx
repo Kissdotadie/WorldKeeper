@@ -13,6 +13,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../api/client'
 import type { DocData } from '../api/types'
 import { useApp } from '../state/store'
+import { useGraphEdit } from '../state/useGraphEdit'
+import { useOutlineEdit } from '../graph/useOutlineEdit'
+import { useStyleResolver } from '../graph/useStyleResolver'
+import { Graph2D } from '../graph/Graph2D'
+import type { GNode } from '../graph/types'
+import { extractLinks } from '../lib/format'
 import { Panel } from '../components/Panel'
 import { StateGate } from '../components/Toast'
 import { LinkText } from '../components/LinkText'
@@ -37,10 +43,10 @@ interface Props {
   axis?: boolean
 }
 
-type Mode = 'table' | 'group' | 'axis'
+type Mode = 'table' | 'group' | 'axis' | 'outline'
 
 export function DocView({ name, title, groupColumn, note, emptyHint, axis = false }: Props) {
-  const { bookId, notify, dataVersion } = useApp()
+  const { bookId, notify, dataVersion, entities, types, openEntity } = useApp()
 
   const [doc, setDoc] = useState<DocData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -49,6 +55,45 @@ export function DocView({ name, title, groupColumn, note, emptyHint, axis = fals
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [mode, setMode] = useState<Mode>(axis ? 'axis' : 'table')
+
+  // ---- 自由结构（WPS 式思维导图编辑）----
+  // 历史观 / 剧情线原本只有表格：一行一行填。现在多一档「结构」，
+  // 素材是**表格里 [[双链]] 提到的实体**——把「哪一年属于哪个时代、
+  // 哪个时代包含哪几件事」亲手排出来，比竖着读表格容易看出全貌。
+  // 表格仍然是真源（world/<name>.md），结构是叠加的一层看法，存在 scene.json。
+  const [outlineSel, setOutlineSel] = useState<string | null>(null)
+  const oe = useOutlineEdit({ sceneKey: `doc-${name}`, title, onSelect: setOutlineSel })
+  const sr = useStyleResolver()
+
+  const outlineNodes = useMemo(() => {
+    const seen = new Set<string>()
+    const out: GNode[] = []
+    const byName = new Map(entities.map((e) => [e.name, e]))
+    for (const row of doc?.rows ?? []) {
+      for (const cell of row) {
+        for (const nm of extractLinks(cell)) {
+          const e = byName.get(nm)
+          if (!e || seen.has(e.id)) continue
+          seen.add(e.id)
+          out.push({ id: e.id, name: e.name, type: e.type, degree: 2 })
+        }
+      }
+    }
+    return out
+  }, [doc, entities])
+
+  const outlineGraph = useMemo(() => {
+    if (!oe.on || !oe.outline) return null
+    const sk = oe.skeleton()
+    const have = new Set(sk.nodes.map((n) => n.id))
+    for (const n of outlineNodes) {
+      if (have.has(n.id)) continue
+      have.add(n.id)
+      sk.nodes.push(n)
+    }
+    return sk
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oe.on, oe.outline, outlineNodes])
 
   const load = useCallback(async () => {
     if (!bookId) return
@@ -68,6 +113,14 @@ export function DocView({ name, title, groupColumn, note, emptyHint, axis = fals
   useEffect(() => {
     void load()
   }, [load])
+
+  /** 结构档里双击实体 = 就地改档案；落盘后重拉这份 Markdown（表格里的双链名可能变了） */
+  const gEdit = useGraphEdit({
+    bookId,
+    types,
+    onChanged: () => void load(),
+    onOpenDetail: openEntity,
+  })
 
   const save = async (text: string) => {
     if (!bookId) return
@@ -117,6 +170,22 @@ export function DocView({ name, title, groupColumn, note, emptyHint, axis = fals
         title={`${doc?.title ?? title}`}
         actions={
           <>
+            {doc?.exists && !editing && (
+              <button
+                className={`btn btn--sm ${mode === 'outline' ? 'btn--on' : ''}`}
+                onClick={() => {
+                  if (mode === 'outline') {
+                    setMode(axis ? 'axis' : 'table')
+                    return
+                  }
+                  if (!oe.on) oe.toggle()
+                  setMode('outline')
+                }}
+                title="结构：把表格里 [[双链]] 提到的实体排成层级。存 view/scene.json，这份 Markdown 一个字不动"
+              >
+                {mode === 'outline' ? '✓ 结构' : '结构'}
+              </button>
+            )}
             {doc?.exists && !editing && (canAxis || canGroup) && (
               <div className="seg">
                 {canAxis && (
@@ -204,6 +273,33 @@ export function DocView({ name, title, groupColumn, note, emptyHint, axis = fals
               <pre>{doc.text}</pre>
               {emptyHint && <p className="faint fs-xs">{emptyHint}</p>}
             </div>
+          ) : mode === 'outline' ? (
+            outlineGraph ? (
+              <div style={{ height: 'min(68vh, 700px)' }}>
+                <Graph2D
+                  {...gEdit.graphProps}
+                  {...sr.g2d}
+                  outlineAvailable
+                  onEnableOutline={oe.toggle}
+                  nodes={outlineGraph.nodes}
+                  edges={outlineGraph.edges}
+                  layout="tree"
+                  rootId={oe.outline?.root ?? null}
+                  selectedId={outlineSel}
+                  hierarchy={oe.hierarchy}
+                  outline={oe.editApi}
+                  noteOf={oe.noteOf}
+                  onSelect={(id) => setOutlineSel(id)}
+                />
+              </div>
+            ) : (
+              <div className="empty">
+                <div className="empty__title">结构还没打开</div>
+                <button className="btn btn--primary btn--sm" onClick={oe.toggle}>
+                  打开自由结构
+                </button>
+              </div>
+            )
           ) : mode === 'axis' && canAxis ? (
             <ChronologyAxis doc={doc} />
           ) : (

@@ -78,6 +78,9 @@ shots/
 .shots/
 docs/stages/
 
+# 作者那本书的封面/插图产出（封面设计任务的成品），不是本产品的交付物。
+封面输出/
+
 # ── 9. 打包与构建产物 ──
 packaging/out/
 packaging/vendor/

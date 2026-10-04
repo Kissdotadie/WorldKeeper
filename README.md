@@ -51,7 +51,7 @@
 
 到 [**Releases**](../../releases) 页面下载：
 
-- `WorldKeeper-Setup-0.2.0.exe` —— 安装版（推荐），双击安装，许可页点「我接受」
+- `WorldKeeper-Setup-0.3.0.exe` —— 安装版（推荐），双击安装，许可页点「我接受」
 - 绿色版 zip —— 解压即用，不写注册表
 
 **系统要求**：Windows 10 / 11（64 位）。无需安装 Python 或 Node。

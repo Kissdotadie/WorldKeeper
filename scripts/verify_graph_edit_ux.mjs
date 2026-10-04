@@ -47,7 +47,12 @@ const dbl = async (x, y) => {
 const openWorld = async () => {
   await ev(`(() => { const b=[...document.querySelectorAll('.rail__item')].find(x=>x.innerText.trim().startsWith('世界观')); b?.click(); return 1 })()`)
   await sleep(1800)
-  await ev(`(() => { const b=[...document.querySelectorAll('button')].find(x=>x.innerText.trim()==='平面'); b?.click(); return 1 })()`)
+  // 世界观走的是 CatalogView，它的档位叫「导图 / 三维 / 清单」，没有「平面」；
+  // 关系网才有「平面 / 三维」。两个都试一下，谁在点谁 —— 目标都是切到 2D。
+  await ev(`(() => {
+    const pick = ['平面', '导图'].map(t => [...document.querySelectorAll('button')].find(x=>x.innerText.trim()===t)).find(Boolean)
+    pick?.click(); return 1
+  })()`)
   await sleep(1500)
 }
 const segBtn = (label) => `(() => { const b=[...document.querySelectorAll('.graph__seg-btn')].find(x=>x.innerText.trim()==='${label}'); return b || null })()`
@@ -81,13 +86,44 @@ await openWorld()
 out['刷新后不再出现'] = await ev(`!document.querySelector('.gguide')`)
 
 // 切到浏览
-const nodeAt = `(() => { const els=[...document.querySelectorAll('[data-nid]')].filter(e=>e.getBoundingClientRect().width>0); const el=els[Math.floor(els.length/2)]; const r=el.getBoundingClientRect(); return { x: Math.round(r.x+r.width/2), y: Math.round(r.y+r.height/2), id: el.getAttribute('data-nid'), tf: el.getAttribute('transform') } })()`
+/**
+ * 挑一个**真的点得到**的实体节点。
+ *
+ * 两个坑都踩过：
+ *  - 画布底部压着提示条 / 图例（`.graph__hint` / `.graph__legend`）。取「所有
+ *    节点的中位数」很容易正好落在它们底下，鼠标事件根本到不了节点上，
+ *    于是「双击弹浮层」变成假失败；
+ *  - 世界观开了「自由结构」之后，图上大半是界面自造的自由节点（`__outline__:`）。
+ *    双击它们走的是**就地改名**而不是实体编辑浮层 —— 那是设计如此，不是坏掉。
+ * 所以这里只认实体节点，并且用 elementFromPoint 反查一次确认没被压住。
+ */
+const nodeAt = `(() => {
+  const probe = (el) => {
+    const r = el.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) return null
+    const x = Math.round(r.x + r.width / 2), y = Math.round(r.y + r.height / 2)
+    if (y > window.innerHeight - 120) return null          // 底部提示条 / 图例那一带
+    const e = document.elementFromPoint(x, y)
+    if (!e || !(e.closest && e.closest('[data-nid]') === el)) return null
+    return { x, y, id: el.getAttribute('data-nid'), tf: el.getAttribute('transform') }
+  }
+  const all = [...document.querySelectorAll('[data-nid]')]
+  const real = all.filter((el) => !(el.getAttribute('data-nid') || '').startsWith('__'))
+  for (const el of real) { const got = probe(el); if (got) return got }
+  for (const el of all) { const got = probe(el); if (got) return got }
+  return null
+})()`
+const pickNode = async (tag) => {
+  const p = await ev(nodeAt)
+  if (!p) console.log(`         ⚠ ${tag}：没找到可点的节点，后面的判定不算数`)
+  return p
+}
 const browsePos = await ev(`(() => { const b=[...document.querySelectorAll('.graph__seg-btn')].find(x=>x.innerText.trim()==='浏览'); const r=b.getBoundingClientRect(); return { x: Math.round(r.x+r.width/2), y: Math.round(r.y+r.height/2) } })()`)
 await click(browsePos.x, browsePos.y)
 out['切浏览后高亮项'] = await ev(`document.querySelector('.graph__seg-btn--on')?.innerText.trim()`)
 out['浏览态提示行'] = await ev(`document.querySelector('.graph__hint')?.innerText.trim()`)
-const n1 = await ev(nodeAt)
-await dbl(n1.x, n1.y)
+const n1 = await pickNode('浏览态双击')
+if (n1) await dbl(n1.x, n1.y)
 out['浏览态双击不弹浮层'] = await ev(`!document.querySelector('.gedit')`)
 // 拖节点：位置应不变
 await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: n1.x, y: n1.y, button: 'left', clickCount: 1 })
@@ -97,7 +133,7 @@ for (let i = 1; i <= 6; i++) {
 }
 await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: n1.x + 72, y: n1.y + 54, button: 'left', clickCount: 1 })
 await sleep(700)
-const n2 = await ev(nodeAt)
+const n2 = (await pickNode('拖动后复查')) || n1
 out['浏览态拖节点不改位置'] = n2.tf === n1.tf
 out['（对照）transform 未变'] = `${n1.tf} → ${n2.tf}`
 
@@ -105,8 +141,8 @@ out['（对照）transform 未变'] = `${n1.tf} → ${n2.tf}`
 const editPos = await ev(`(() => { const b=[...document.querySelectorAll('.graph__seg-btn')].find(x=>x.innerText.trim()==='编辑'); const r=b.getBoundingClientRect(); return { x: Math.round(r.x+r.width/2), y: Math.round(r.y+r.height/2) } })()`)
 await click(editPos.x, editPos.y)
 out['切回编辑高亮项'] = await ev(`document.querySelector('.graph__seg-btn--on')?.innerText.trim()`)
-const n3 = await ev(nodeAt)
-await dbl(n3.x, n3.y)
+const n3 = await pickNode('编辑态双击')
+if (n3) await dbl(n3.x, n3.y)
 out['编辑态双击弹浮层'] = await ev(`!!document.querySelector('.gedit')`)
 out['浮层里是改实体'] = await ev(`(document.querySelector('.gedit')?.innerText || '').replace(/\s+/g,' ').slice(0, 60)`)
 

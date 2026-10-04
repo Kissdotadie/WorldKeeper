@@ -904,6 +904,50 @@ export const saveScene = (bookId: string, scene: SceneState) =>
     body: JSON.stringify({ scene }),
   })
 
+// --------------------------------------------------------------------------
+// 思维导图大纲导入
+//
+// 后端**只解析不落盘**，返回一棵带「子级/描述」初判的树；确认由人在前端做，
+// 落盘也由前端写进 scene.json 的 outlines（铁律 1：工具只产待确认清单）。
+// --------------------------------------------------------------------------
+
+export interface OutlineImportNode {
+  /** 路径式稳定 id，前端拿它当 key 与勾选 */
+  id: string
+  /** 节点名（多行文本的首行 / 剥掉括注后的部分） */
+  head: string
+  /** 描述或注记（多行文本的其余行 / 括号里的内容） */
+  desc: string
+  role: 'node' | 'desc'
+  /** 初判分数，绝对值越大越确定 */
+  score: number
+  /** 为什么这么判 —— 界面上要能说清楚，人才好推翻它 */
+  reason: string
+  children: OutlineImportNode[]
+}
+
+export interface OutlineImport {
+  book_id: string
+  source: {
+    name: string
+    kind: 'mm' | 'docx' | 'text'
+    /** true = 源文件原生（`.mm`），层级无损；false = 导出产物，层级可能被压平 */
+    exact: boolean
+    [k: string]: unknown
+  }
+  items: OutlineImportNode[]
+  stats: { total: number; nodes: number; descs: number; max_depth: number }
+}
+
+export const parseOutline = (bookId: string, file: File) => {
+  const fd = new FormData()
+  fd.append('file', file, file.name)
+  return request<OutlineImport>(`/api/books/${enc(bookId)}/outline/parse`, {
+    method: 'POST',
+    body: fd,
+  })
+}
+
 /** 丢掉全部锁定坐标 —— 「重新排版」用。 */
 export const clearScene = (bookId: string) =>
   request<{ deleted: boolean }>(`/api/books/${enc(bookId)}/scene`, { method: 'DELETE' })

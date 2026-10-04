@@ -12,10 +12,14 @@ import { useApp } from '../state/store'
 import { useGraphEdit } from '../state/useGraphEdit'
 import { Panel } from '../components/Panel'
 import { StateGate } from '../components/Toast'
+import { Graph2D } from '../graph/Graph2D'
 import { Timeline3D } from '../graph/Timeline3D'
 import { useSceneStyles } from '../graph/useSceneStyles'
+import { useStyleResolver } from '../graph/useStyleResolver'
+import { useOutlineEdit } from '../graph/useOutlineEdit'
+import type { GNode } from '../graph/types'
 
-type Mode = 'axis' | 'river3d' | 'table'
+type Mode = 'axis' | 'river3d' | 'outline' | 'table'
 
 export function TimelineView() {
   const { bookId, types, openEntity, query, prefs, requestView } = useApp()
@@ -79,6 +83,31 @@ export function TimelineView() {
       ),
     [chapters],
   )
+
+  // ---- 自由结构（WPS 式思维导图编辑）----
+  // 时间线原本是一根**算死的轴**（X = 第几章），没有任何可编辑的层级。
+  // 现在多一档「结构」：把这册里出过场的实体当素材，亲手排成「谁包含谁」——
+  // 比如「极寒时期 → 各国动向 → A国 / B国」，比按章节平铺更容易看出全貌。
+  // 轴那一档一个字没动：两者是同一批实体的两种看法。
+  const [outlineSel, setOutlineSel] = useState<string | null>(null)
+  const oe = useOutlineEdit({ sceneKey: 'timeline', title: '时间线', onSelect: setOutlineSel })
+  const sr = useStyleResolver()
+
+  /** 结构档的节点：结构骨架 + 全部出过场的实体（没归位的照常画） */
+  const outlineGraph = useMemo(() => {
+    if (!oe.on || !oe.outline) return null
+    const sk = oe.skeleton()
+    const have = new Set(sk.nodes.map((n) => n.id))
+    const added = new Set<string>()
+    for (const e of flat) {
+      if (added.has(e.entity_id) || have.has(e.entity_id)) continue
+      added.add(e.entity_id)
+      const node: GNode = { id: e.entity_id, name: e.name, type: e.type, degree: 2 }
+      sk.nodes.push(node)
+    }
+    return sk
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oe.on, oe.outline, flat])
 
   // ---- 线索断点（P4 验收：时间线能看出线索断点） ----
   // 实体最后一次出场之后，再有 ≥2 章没出现 = 断点（线头悬着没收）
@@ -167,6 +196,16 @@ export function TimelineView() {
                 三维长河
               </button>
               <button
+                className={`seg__item ${mode === 'outline' ? 'seg__item--on' : ''}`}
+                onClick={() => {
+                  if (!oe.on) oe.toggle()
+                  setMode('outline')
+                }}
+                title="结构：把这册里出过场的实体亲手排成「谁包含谁」。轴那一档照旧按章节排，两种看法互不影响"
+              >
+                结构
+              </button>
+              <button
                 className={`seg__item ${mode === 'table' ? 'seg__item--on' : ''}`}
                 onClick={() => setMode('table')}
               >
@@ -222,7 +261,34 @@ export function TimelineView() {
                 </div>
               )}
 
-              {mode === 'axis' ? (
+              {mode === 'outline' ? (
+                outlineGraph ? (
+                  <div style={{ height: 'min(72vh, 720px)' }}>
+                    <Graph2D
+                      {...gEdit.graphProps}
+                      {...sr.g2d}
+                      outlineAvailable
+                      onEnableOutline={oe.toggle}
+                      nodes={outlineGraph.nodes}
+                      edges={outlineGraph.edges}
+                      layout="tree"
+                      rootId={oe.outline?.root ?? null}
+                      selectedId={outlineSel}
+                      hierarchy={oe.hierarchy}
+                      outline={oe.editApi}
+                      noteOf={oe.noteOf}
+                      onSelect={(id) => setOutlineSel(id)}
+                    />
+                  </div>
+                ) : (
+                  <div className="empty">
+                    <div className="empty__title">结构还没打开</div>
+                    <button className="btn btn--primary btn--sm" onClick={oe.toggle}>
+                      打开自由结构
+                    </button>
+                  </div>
+                )
+              ) : mode === 'axis' ? (
                 <ol className="tl">
                   {chapters.map((c) => (
                     <li className="tl__chapter" key={c.chapter}>

@@ -140,8 +140,19 @@ export function layoutTree(
   }
   walk(tree.root)
 
+  // 孤儿排成**多列网格**，不是一条长队。
+  // 为什么：结构模式刚打开（或大纲刚导入）时，没挂进结构的实体动辄几百个，
+  // 排成一条 780×40px 的长队，适配窗口后每个节点缩到不足 1 像素 ——
+  // 用户看到的就是「图是空的」，其实东西全在。改成固定行数的网格后，
+  // 高度被压住，适配之后至少是「看得见的一整块」。
+  const ORPHAN_ROWS = 14
   tree.orphans.forEach((id, i) => {
-    out.set(id, { x: (maxDepth + 1) * layerGap, y: (cursor.row + i) * rowGap })
+    const col = Math.floor(i / ORPHAN_ROWS)
+    const row = i % ORPHAN_ROWS
+    out.set(id, {
+      x: (maxDepth + 1 + col) * layerGap,
+      y: (cursor.row + row) * rowGap,
+    })
   })
   return out
 }

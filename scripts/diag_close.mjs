@@ -26,7 +26,7 @@ await sleep(1200)
 
 const n = await ev(`(() => { const els=[...document.querySelectorAll('[data-nid]')]; const el=els[Math.floor(els.length/2)]; const r=el.getBoundingClientRect(); return { x: Math.round(r.x+r.width/2), y: Math.round(r.y+r.height/2), id: el.getAttribute('data-nid') } })()`)
 await click(n.x, n.y)
-console.log('选中后 halo:', await ev(`document.querySelectorAll('.graph__halo').length`))
+console.log('选中后选中环:', await ev(`document.querySelectorAll('[data-halo="sel"]').length`))
 console.log('✕ 元素:', await ev(`(() => {
   const bs = [...document.querySelectorAll('.panel__close')]
   return bs.map(b => { const r = b.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.x), y: Math.round(r.y), cx: Math.round(r.x+r.width/2), cy: Math.round(r.y+r.height/2), vis: getComputedStyle(b).visibility, disp: getComputedStyle(b).display, pe: getComputedStyle(b).pointerEvents } })

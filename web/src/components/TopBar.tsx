@@ -11,6 +11,10 @@ import type { LayoutsApi } from '../shell/useLayouts'
 interface Props {
   onNewEntity: () => void
   layouts: LayoutsApi
+  /** 顶栏「快捷」菜单：原先是汇总页里的一块卡片，挪上来是为了在任何界面都能一键到 */
+  onNewBook: () => void
+  onRebuild: () => void
+  rebuilding?: boolean
 }
 
 /** 敲字到「真的开始筛」之间的等待。
@@ -18,7 +22,7 @@ interface Props {
  *  输入框本身仍然是即时的，只是把广播往后压一压。 */
 const TYPE_DELAY = 180
 
-export function TopBar({ onNewEntity, layouts }: Props) {
+export function TopBar({ onNewEntity, layouts, onNewBook, onRebuild, rebuilding }: Props) {
   const {
     query, setQuery, theme, toggleTheme, fontScale, setFontScale,
     sidebarOpen, toggleSidebar, view, requestView, books, bookId, switchBook,
@@ -27,6 +31,19 @@ export function TopBar({ onNewEntity, layouts }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [spin, setSpin] = useState(false)
+  // 「快捷」下拉：从汇总页的「快捷操作」卡片挪上来的那几个动作
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const actionsBox = useRef<HTMLDivElement>(null)
+
+  // 点空白处收起下拉（与布局菜单同一个套路）
+  useEffect(() => {
+    if (!actionsOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (actionsBox.current && !actionsBox.current.contains(e.target as Node)) setActionsOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [actionsOpen])
 
   // 手动刷新（P11-1️⃣①）。
   // 正常情况下不需要点它 —— 写操作会自动广播失效（dataVersion），各视图自己就更新了。
@@ -137,6 +154,11 @@ export function TopBar({ onNewEntity, layouts }: Props) {
           placeholder={`搜索实体（${modKey()}+K）`}
           title="多个词用空格隔开，会要求每个词都命中；一到两个字的短词也能搜到正文里的内容"
           onChange={(e) => onQuery(e.target.value)}
+          onKeyDown={(e) => {
+            // Esc 收回焦点：搜索框是个临时落脚点，键盘用户按 Esc 该能退出，
+            // 而不是被困在里面 —— 不然接着按的快捷键全被输入框吃掉。
+            if (e.key === 'Escape') e.currentTarget.blur()
+          }}
           aria-label="搜索实体"
         />
         {draft && (
@@ -172,6 +194,50 @@ export function TopBar({ onNewEntity, layouts }: Props) {
       <button className="btn btn--primary btn--sm" onClick={() => onNewEntity()}>
         ＋ 新建实体
       </button>
+
+      {/* 快捷操作：原本在汇总页占一整块卡片，写多了以后人根本滚不到那儿。
+          挪进顶栏做成下拉 —— 在任何界面都够得着，汇总页也清爽了。 */}
+      <div className="menu" ref={actionsBox}>
+        <button
+          className={`btn btn--ghost btn--sm menu__trigger ${actionsOpen ? 'menu__trigger--open' : ''}`}
+          onClick={() => setActionsOpen((o) => !o)}
+          title="常用动作：新建 / 导入 / 重建索引"
+          aria-expanded={actionsOpen}
+        >
+          快捷<span className="menu__caret">▾</span>
+        </button>
+        {actionsOpen && (
+          <div className="menu__panel" role="menu">
+            <div className="menu__label">常用动作</div>
+            <div className="menu__row">
+              <button className="menu__pick" onClick={() => { setActionsOpen(false); onNewEntity() }}>
+                <span className="menu__pick-name">新建实体</span>
+                <span className="faint fs-xs">Ctrl+N</span>
+              </button>
+            </div>
+            <div className="menu__row">
+              <button className="menu__pick" onClick={() => { setActionsOpen(false); requestView('text') }}>
+                <span className="menu__pick-name">批量导入</span>
+                <span className="faint fs-xs">Ctrl+I</span>
+              </button>
+            </div>
+            <div className="menu__row">
+              <button className="menu__pick" onClick={() => { setActionsOpen(false); onNewBook() }}>
+                <span className="menu__pick-name">新建书目</span>
+              </button>
+            </div>
+            <div className="menu__row">
+              <button
+                className="menu__pick"
+                disabled={rebuilding}
+                onClick={() => { setActionsOpen(false); onRebuild() }}
+              >
+                <span className="menu__pick-name">{rebuilding ? '重建中…' : '重建索引'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="topbar__group">
         <label className="slider" title="整体字号">

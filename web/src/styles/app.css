@@ -1804,6 +1804,20 @@
   pointer-events: none;
   user-select: none;
 }
+/* 节点描述（导入大纲识别出的「说明」）：比名字小一档、更淡，
+   画在名字正下方 —— 肉眼一眼能分清「这是节点」和「这是它的注脚」 */
+.graph__note {
+  font-size: 9.5px;
+  fill: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.78;
+  font-style: italic;
+  paint-order: stroke;
+  stroke: var(--bg-surface);
+  stroke-width: 2.6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  user-select: none;
+}
 .graph__toolbar {
   position: absolute;
   left: var(--p-space-3);
@@ -1874,6 +1888,110 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* ---- 大纲导入面板 ---- */
+
+/* 树要横着摆得下两栏判定，比普通弹窗宽一档 */
+.modal--xwide { width: min(1180px, 100%); }
+
+.oimp { display: flex; flex-direction: column; min-height: 0; }
+.oimp__hint { color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.8; }
+.oimp__hint p { margin: 0 0 var(--p-space-3); }
+.oimp__hint code {
+  font-size: var(--fs-xs);
+  padding: 1px 5px;
+  border-radius: var(--p-radius-sm);
+  background: var(--bg-sunken);
+  color: var(--text-primary);
+}
+.oimp__error {
+  padding: var(--p-space-3);
+  border-radius: var(--p-radius-md);
+  background: var(--danger-soft, rgba(220, 80, 80, 0.12));
+  color: var(--danger, #d05050);
+  font-size: var(--fs-sm);
+}
+.oimp__meta { margin-bottom: var(--p-space-2); gap: 6px; }
+.oimp__exact { color: var(--ok, #3f9d63); border-color: currentColor; }
+.oimp__lossy { color: var(--warn, #c98a2e); border-color: currentColor; }
+.oimp__c-node { color: var(--text-secondary); }
+.oimp__c-desc { color: var(--accent); }
+.oimp__reuse { color: var(--ok, #3f9d63); }
+
+.oimp__tree {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: 56vh;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--p-radius-md);
+  background: var(--bg-sunken);
+  padding: var(--p-space-1) 0;
+}
+.oimp__node { }
+.oimp__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 0;
+  font-size: var(--fs-sm);
+  border-left: 3px solid transparent;
+}
+.oimp__row:hover { background: var(--bg-hover, rgba(127, 127, 127, 0.08)); }
+/* 被判为「描述」的行：左边一道强调色，名字压暗 —— 一眼看出它不占节点 */
+.oimp__row--desc {
+  border-left-color: var(--accent);
+  color: var(--text-secondary);
+}
+.oimp__row--desc .oimp__head { opacity: 0.72; }
+.oimp__caret {
+  width: 16px;
+  flex: 0 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary, var(--text-secondary));
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  padding: 0;
+}
+.oimp__caret:disabled { cursor: default; opacity: 0.4; }
+.oimp__head { color: var(--text-primary); }
+.oimp__row--desc .oimp__head { color: inherit; }
+.oimp__desc-inline {
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+.oimp__kids {
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  opacity: 0.7;
+}
+.oimp__group {
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--p-radius-sm);
+  cursor: pointer;
+}
+.oimp__group:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 行内的「子级 / 描述」两态开关 —— 比分段控件小一号，才不撑高每一行 */
+.seg--xs { padding: 1px; }
+.seg--xs .seg__item {
+  font-size: 10px;
+  padding: 1px 7px;
+  line-height: 1.6;
+}
+
 /* 工具条上的「浏览 / 编辑」两态开关（P11-2️⃣①）。
    为什么不用普通按钮：编辑是**模式**，不是动作 —— 两个状态都该看得见，
    当前在哪个状态也得一眼认出来（实心 = 当前）。 */
@@ -1932,6 +2050,13 @@
   border-radius: var(--p-radius-lg);
   background: var(--bg-surface);
   box-shadow: var(--shadow-lg);
+  /* 提示卡不吃点击。它正好压在画布中上部，要是拦下事件，下面那一带的节点
+     第一次就点不中 —— 用户看到的是「点了没反应」，而这恰恰是它在讲的东西。
+     所以卡身放行，只有那排按钮接管事件。 */
+  pointer-events: none;
+}
+.gguide .row {
+  pointer-events: auto;
 }
 .gguide__title {
   font-size: var(--fs-md);
@@ -3063,8 +3188,20 @@ html[data-has-bg='on'][data-panel-blur='on'] .toast {
 
 /* ---- 图谱 ---- */
 .meth__graph {
-  height: min(62vh, 620px);
-  min-height: 320px;
+  /* 早先写死 min(62vh, 620px)：面板明明有更高的地方，图却被摁在 620px 里，
+     34 个节点的树在 k=1 下要 800 多像素 —— 于是「显示不全，滚动条还滚不出来」
+     （SVG 会裁掉自身框外的内容，外层滚动条帮不上忙）。
+     这里必须给**有定数的**高度：要是写成 height:100%，而父级（panel→body→
+     split 格子）全是内容自适应，百分比就没了参照，图会一路长到 1600 多像素。
+     78vh 比原来高出一截，又不至于把面板撑得没边。 */
+  height: min(78vh, 900px);
+  min-height: 360px;
+}
+
+/* .graph 默认是 clamp(400px, 66vh, 820px) —— 那是给「自己就是一屏主角」的
+   视图用的。塞进方法论的格子里就得听格子的，别自作主张。 */
+.meth__graph .graph {
+  height: 100%;
 }
 
 /* ---- 三维档：大图 + 侧栏（与 .relation / .catalog 同构）---- */
@@ -3072,9 +3209,19 @@ html[data-has-bg='on'][data-panel-blur='on'] .toast {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: var(--p-space-4);
-  align-items: start;
+  align-items: stretch;
   min-height: 0;
   flex: 1;
+}
+
+/* 结构模式的节点滑动（见 Graph2D 的 graph__nodes--anim）。
+   力导向布局不加 —— 它的坐标每帧都在变，过渡只会拖影子。 */
+.graph__nodes--anim > g {
+  transition: transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+/* 拖拽中的节点必须即时跟手，别让它滑 */
+.graph__nodes--anim > g.graph__node--snap {
+  transition: none;
 }
 .meth__side {
   display: flex;

@@ -178,9 +178,12 @@ const nodePos = await ev(`(() => {
 if (nodePos) await click(nodePos.x, nodePos.y)
 else console.log('         ⚠ 没找到可点的节点，后面的选中判定必然失败')
 await sleep(900)
-check('单击节点后确实选中了（halo = 1）',
-  await ev(`document.querySelectorAll('.graph__halo').length === 1`),
-  await ev(`document.querySelectorAll('.graph__halo').length`))
+// `.graph__halo` 有四种来由：样式包的 highlight 规则、搜索命中、拖拽落点、当前选中。
+// 断言只关心最后一种，所以统一数 `[data-halo="sel"]`；用 class 总数会被
+// 「人物类型挂了 highlight 规则」这类样式配置污染（光样式环就能有 3 个）。
+check('单击节点后确实选中了（选中环 = 1）',
+  await ev(`document.querySelectorAll('[data-halo="sel"]').length === 1`),
+  await ev(`document.querySelectorAll('[data-halo="sel"]').length`))
 
 const menuPos = await ev(`(() => { const b=document.querySelector('.menu__trigger'); if(!b) return null; const r=b.getBoundingClientRect(); return { x: Math.round(r.x+r.width/2), y: Math.round(r.y+r.height/2) } })()`)
 if (menuPos) await click(menuPos.x, menuPos.y)
@@ -189,14 +192,14 @@ check('布局菜单已打开', await ev(`(() => { const m=document.querySelector
 
 await key('Escape')
 const menuStillOpen = await ev(`!!document.querySelector('.menu__trigger--open')`)
-const haloAfterEsc = await ev(`document.querySelectorAll('.graph__halo').length`)
+const haloAfterEsc = await ev(`document.querySelectorAll('[data-halo="sel"]').length`)
 check('Esc 关掉了布局菜单', !menuStillOpen)
 check('**同一次 Esc 没有顺手把图上选中也取消**（这是 A2 修掉的老毛病）',
-  haloAfterEsc === 1, `halo = ${haloAfterEsc}`)
+  haloAfterEsc === 1, `选中环 = ${haloAfterEsc}`)
 
 await key('Escape')
-const haloAfterEsc2 = await ev(`document.querySelectorAll('.graph__halo').length`)
-check('再按一次 Esc，这回才轮到取消选中', haloAfterEsc2 === 0, `halo = ${haloAfterEsc2}`)
+const haloAfterEsc2 = await ev(`document.querySelectorAll('[data-halo="sel"]').length`)
+check('再按一次 Esc，这回才轮到取消选中', haloAfterEsc2 === 0, `选中环 = ${haloAfterEsc2}`)
 
 console.log('\n=== 运行时异常 ===')
 check('无未捕获异常', errs.length === 0, errs.join(' | '))

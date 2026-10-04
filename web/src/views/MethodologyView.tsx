@@ -29,6 +29,8 @@ import { Graph2D } from '../graph/Graph2D'
 import { Graph3D } from '../graph/Graph3D'
 import { useSceneStyles } from '../graph/useSceneStyles'
 import { useStyleResolver } from '../graph/useStyleResolver'
+import { useOutlineEdit } from '../graph/useOutlineEdit'
+import { isVirtualOutlineId } from '../graph/outline'
 import { LAYOUT_LABELS, typeColorVar, type GEdge, type GNode, type LayoutKind } from '../graph/types'
 
 const ROOT = '__meth_root__'
@@ -70,6 +72,16 @@ export function MethodologyView() {
   const sr = useStyleResolver()
   const layout: LayoutKind = layoutPick ?? sr.layout
 
+  // ---- 自由结构（WPS 式思维导图编辑）----
+  // 「方法论 → 某某主义 / 某某戒律」本来只能靠标签想，现在能亲手搭。
+  // 结构落 view/scene.json 的 outlines['methodology']，与方法论实体档案无关。
+  //
+  // 结构模式下**不再画信奉者节点**：那是派生信息（谁信这套），搭结构时碍事，
+  // 切回普通图或卡片就能看到。所以这里多一个 outlineSel —— 与 selected
+  // （方法论名字）不是一套：结构里还能选中自由节点，它没有「名字」。
+  const [outlineSel, setOutlineSel] = useState<string | null>(null)
+  const oe = useOutlineEdit({ sceneKey: 'methodology', title: '方法论', onSelect: setOutlineSel })
+
   const pickLayout = (k: LayoutKind) => {
     const next = k === sr.layout ? null : k
     setLayoutPick(next)
@@ -106,6 +118,29 @@ export function MethodologyView() {
   /** 方法论 → 信奉者 的派生图 */
   const graph = useMemo(() => {
     const items = data?.items ?? []
+
+    // ---- 自由结构模式：骨架换成用户亲手搭的那份 ----
+    // 方法论节点照常平铺进来（一个都不能少 —— 结构里没提到的也要看得见），
+    // 但不再自动生成「中心 → 方法论」的派生边：层级由结构说了算。
+    if (oe.on && oe.outline) {
+      const sk = oe.skeleton()
+      const have = new Set(sk.nodes.map((n) => n.id))
+      for (const it of items) {
+        if (typeFilter && !it.holders.some((h) => h.type === typeFilter)) continue
+        const mid = methNodeId(it.name)
+        if (have.has(mid)) continue
+        have.add(mid)
+        sk.nodes.push({
+          id: mid,
+          name: it.name,
+          type: 'methodology',
+          size: it.count ? 16 + Math.min(10, it.count * 2) : 12,
+          color: typeColorVar('methodology'),
+        })
+      }
+      return sk
+    }
+
     const nodes: GNode[] = [
       { id: ROOT, name: '方法论', type: '__root__', size: 22, color: 'var(--accent)' },
     ]
@@ -140,7 +175,36 @@ export function MethodologyView() {
       }
     }
     return { nodes, edges }
-  }, [data, typeFilter])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, typeFilter, oe.on, oe.outline])
+
+  /**
+   * 结构模式的层级表。
+   *
+   * 结构里没提到的节点**挂到根下**，而不是丢进孤儿行 —— 方法论这一页的节点
+   * 本来就是派生出来的（用户没义务把它们全拖进结构），让它们散在孤儿行里
+   * 看起来就像「结构模式把图弄坏了」。挂在根下既保住了层级，也一眼看得出
+   * 「这些还没归位」。
+   */
+  const hierarchy = useMemo(() => {
+    const o = oe.outline
+    if (!oe.on || !o) return null
+    const children = new Map<string, string[]>()
+    for (const [p, ks] of Object.entries(o.children)) children.set(p, [...ks])
+    const placed = new Set<string>([o.root])
+    for (const ks of children.values()) for (const k of ks) placed.add(k)
+    const rootKids = [...(children.get(o.root) ?? [])]
+    for (const it of data?.items ?? []) {
+      const mid = methNodeId(it.name)
+      if (!placed.has(mid)) {
+        placed.add(mid)
+        rootKids.push(mid)
+      }
+    }
+    if (rootKids.length) children.set(o.root, rootKids)
+    return { root: o.root, children }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oe.on, oe.outline, data])
 
   /**
    * 三维图 —— **只画真身**。
@@ -213,6 +277,9 @@ export function MethodologyView() {
   const graphEditProps = {
     ...gEdit.graphProps,
     onNodeEdit: (id: string, name: string, screen: { x: number; y: number }, nearType?: string) => {
+      // 自由结构模式下双击自由节点 = 想给它改名，不该弹「还没建成实体」的提示。
+      // 改名走 F2 / 浮条上的「改名」，这里安静放过。
+      if (isVirtualOutlineId(id)) return
       const real = realIdOf(id)
       if (!real) {
         notify('info', `「${name}」还没建成实体 —— 在卡片视图点「待补建」，或双击空白新建一条`)
@@ -453,6 +520,13 @@ export function MethodologyView() {
               flush
               actions={
                 <div className="row">
+                  <button
+                    className={`btn btn--sm ${oe.on ? 'btn--on' : ''}`}
+                    onClick={oe.toggle}
+                    title="自由结构：自己搭「谁包含谁」—— 选中节点后 Tab 加子级、Enter 加同级、拖到节点上换父级"
+                  >
+                    {oe.on ? '✓ 自由结构' : '自由结构'}
+                  </button>
                   <div className="seg">
                     {LAYOUT_LABELS.map((l) => (
                       <button
@@ -492,23 +566,33 @@ export function MethodologyView() {
                   <Graph2D
                     {...graphEditProps}
                     {...sr.g2d}
+                    outlineAvailable
+                    onEnableOutline={oe.toggle}
                     nodes={graph.nodes}
                     edges={graph.edges}
                     layout={layout}
-                    rootId={ROOT}
-                    selectedId={selected ? methNodeId(selected) : null}
+                    rootId={oe.on && oe.outline ? oe.outline.root : ROOT}
+                    selectedId={oe.on ? outlineSel : selected ? methNodeId(selected) : null}
                     showLabels={showLabels}
+                    hierarchy={hierarchy}
+                    outline={oe.editApi}
+                    noteOf={oe.noteOf}
                     onToggleLinkMode={() => gEdit.setLinkMode((v) => !v)}
                     onSelect={(id) => {
                       if (id === null) {
                         // 点了空白 → 取消选中（P11-2️⃣②）
                         setSelected(null)
                         setSelectedId3d(null)
-                      } else if (id.startsWith('__meth__:')) {
+                        setOutlineSel(null)
+                        return
+                      }
+                      setOutlineSel(id)
+                      if (id.startsWith('__meth__:')) {
                         setSelected(id.slice('__meth__:'.length))
                       } else if (id.startsWith('ent:')) {
                         openEntity(id.slice(4))
-                      } else {
+                      } else if (!isVirtualOutlineId(id)) {
+                        // 中心骨架这类点不着档案的：清掉侧栏选中，别留着上一次的
                         setSelected(null)
                       }
                     }}
